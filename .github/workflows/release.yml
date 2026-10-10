@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  # npm trusted publishing (OIDC) and provenance attestations.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches package.json
+        run: |
+          want="v$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json ($want)"
+            exit 1
+          fi
+      - run: npm ci
+      - run: |
+          npx tsc --noEmit
+          npx tsc --noEmit -p scripts/tsconfig.json
+          npx tsc --noEmit -p test/tsconfig.json
+      # prepublishOnly runs pricing:audit, build and test again before upload.
+      - run: npm publish --provenance --access public
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag

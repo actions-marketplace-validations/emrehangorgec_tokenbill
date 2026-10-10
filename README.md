@@ -58,22 +58,59 @@ Options:
 ```
 --json            machine-readable output (schemaVersion 2)
 --html [file]     shareable single-file HTML report (default: tokenbill-report.html)
+--md [file]       GitHub Markdown report to stdout or a .md file (PR comments, job summaries)
 --top <n>         number of expensive turns to show (default 10)
 --budget <usd>    exit 2 if the total exceeds this amount (for CI)
 --pricing <file>  override the built-in price table with your own JSON
 --no-color        disable colored output (NO_COLOR env also respected)
 ```
 
-### Budget guard in CI
+### Live cost in your Claude Code status line
 
-`--budget` still prints the full report, then exits `2` if you're over. Drop it into
-a workflow to fail the build when a project's spend crosses a line:
+`tokenbill statusline` reads the JSON Claude Code pipes to status line commands
+and prints one line: this session's cost, today's spend across the project,
+cache hit rate, and a warning when a cache prefix break cost you money.
 
-```yaml
-- run: npx tokenbill . --budget 25
+```
+tokenbill $4.12 · today $18.30 · cache 97% · ⚠ 1 prefix break ($3.14)
 ```
 
+Install it globally (`npx` would add its startup time to every refresh), then
+point `~/.claude/settings.json` at it:
+
+```
+npm i -g tokenbill
+```
+
+```json
+{ "statusLine": { "type": "command", "command": "tokenbill statusline" } }
+```
+
+It only parses session files modified today, writes nothing to disk, and never
+fails loudly: on any error it prints `tokenbill -` and exits 0.
+
+### GitHub Action and budget guard
+
+`--budget` still prints the full report, then exits `2` if you're over.
 Exit codes: `0` ok, `1` error, `2` budget exceeded.
+
+CI runners have no `~/.claude`, so point tokenbill at logs you commit to the
+repo or download as an artifact. The bundled action writes the Markdown report
+to the job summary and applies the guard:
+
+```yaml
+- uses: emrehangorgec/tokenbill@v0.6.0
+  with:
+    path: .agent-logs          # a Claude Code log dir or a single .jsonl
+    budget: 25                 # optional: fail the job above $25
+```
+
+Or call the CLI directly:
+
+```yaml
+- run: npx tokenbill .agent-logs --md >> "$GITHUB_STEP_SUMMARY"
+- run: npx tokenbill .agent-logs --budget 25
+```
 
 ## What it tells you
 
@@ -85,6 +122,7 @@ Exit codes: `0` ok, `1` error, `2` budget exceeded.
 - **Top expensive turns** - the moments that actually burned the budget, each with a one-line description of what happened.
 - **Recommendations** - actionable findings with dollar impact: cache prefix breaks, file-read-heavy sessions, expensive compactions, low hit rates, plus an honest "potential savings" estimate.
 - **Daily spend trend** - a sparkline and per-day breakdown of the last 14 days (project reports), so you can see spend habits over time.
+- **Markdown report** - `--md` renders the same report as GitHub tables for PR comments and job summaries.
 - **Shareable HTML report** - `--html` writes the whole report as one self-contained dark-theme HTML file (no external requests, sortable turn table) you can open, screenshot, or send to your team.
 
 ## Honest caveats
