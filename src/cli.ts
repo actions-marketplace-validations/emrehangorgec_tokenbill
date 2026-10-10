@@ -11,11 +11,14 @@ import { overridePricing, overrideServerToolPricing } from "./cost/pricing.js";
 import { claudeProjectsRoot, encodeProjectPath, resolveProjectLogDir } from "./project-dir.js";
 import { renderAggregateHtml, renderHtml } from "./report/html.js";
 import { renderAggregateJson, renderJson } from "./report/json.js";
+import { renderAggregateMarkdown, renderMarkdown } from "./report/markdown.js";
 import { renderAggregateReport, renderReport } from "./report/terminal.js";
 import { setColorEnabled } from "./report/theme.js";
+import { runStatusline } from "./statusline.js";
 import { topTurns } from "./turns.js";
 
 const HELP = `Usage: tokenbill [options] [session-file.jsonl | project-dir]
+       tokenbill statusline   (Claude Code statusLine command, reads JSON on stdin)
 
 With no path argument, analyzes every session in the Claude Code project
 matching your current directory (falls back to your single most recent
@@ -28,6 +31,8 @@ Options:
   --json            machine-readable output
   --html [file]     write a shareable single-file HTML report
                     (default: tokenbill-report.html)
+  --md [file]       GitHub Markdown report, to stdout or a .md file
+                    (PR comments, $GITHUB_STEP_SUMMARY)
   --top <n>         number of expensive turns to show (default 10)
   --budget <usd>    exit 2 if the reported total exceeds this amount (for CI)
   --pricing <file>  JSON file overriding the built-in price table
@@ -115,10 +120,26 @@ function resolveTarget(arg: string | undefined): Target {
   return { mode: "aggregate", files, label };
 }
 
+// --- statusline subcommand ------------------------------------------------
+// Claude Code renders ANSI colors in the status line even though stdout is a
+// pipe, so colors stay on unless explicitly disabled.
+if (process.argv[2] === "statusline") {
+  setColorEnabled(!process.env.NO_COLOR && !process.argv.includes("--no-color"));
+  let raw = "";
+  try {
+    raw = process.stdin.isTTY ? "" : fs.readFileSync(0, "utf8");
+  } catch {
+    /* no stdin */
+  }
+  console.log(runStatusline(raw));
+  process.exit(0);
+}
+
 // --- arg parsing -----------------------------------------------------------
 const argv = process.argv.slice(2);
 let json = false;
 let html: string | undefined;
+let md: string | true | undefined;
 let top = 10;
 let budget: number | undefined;
 let target: string | undefined;
@@ -157,6 +178,8 @@ for (let i = 0; i < argv.length; i++) {
   } else if (a === "--html") {
     html =
       argv[i + 1] && argv[i + 1].endsWith(".html") ? path.resolve(argv[++i]) : path.resolve("tokenbill-report.html");
+  } else if (a === "--md") {
+    md = argv[i + 1] && argv[i + 1].endsWith(".md") ? path.resolve(argv[++i]) : true;
   } else if (a === "--no-color") {
     setColorEnabled(false);
   } else if (a === "--top") {
@@ -206,9 +229,19 @@ function maskLabel(label: string): string {
   return masked;
 }
 
-if (json && html) {
-  console.error("--json and --html are mutually exclusive");
+if ([json, html, md].filter(Boolean).length > 1) {
+  console.error("--json, --html and --md are mutually exclusive");
   process.exit(1);
+}
+
+/** --md goes to stdout unless a .md file was named. */
+function emitMarkdown(text: string): void {
+  if (typeof md === "string") {
+    fs.writeFileSync(md, text);
+    console.error(`Wrote ${md}`);
+  } else {
+    console.log(text);
+  }
 }
 
 let totalUSD = 0;
@@ -226,6 +259,8 @@ try {
     if (html) {
       fs.writeFileSync(html, renderHtml(session, cost, attr, turns, cache));
       console.error(`Wrote ${html}`);
+    } else if (md) {
+      emitMarkdown(renderMarkdown(session, cost, attr, turns, cache));
     } else {
       console.log(
         json
@@ -241,6 +276,8 @@ try {
     if (html) {
       fs.writeFileSync(html, renderAggregateHtml(result, label));
       console.error(`Wrote ${html}`);
+    } else if (md) {
+      emitMarkdown(renderAggregateMarkdown(result, label));
     } else {
       console.log(
         json ? renderAggregateJson(result, label) : renderAggregateReport(result, label, top),

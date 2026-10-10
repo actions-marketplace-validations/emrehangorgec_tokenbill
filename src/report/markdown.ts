@@ -1,0 +1,229 @@
+/**
+ * GitHub-flavored Markdown report: for PR comments, `$GITHUB_STEP_SUMMARY`
+ * and issue threads. Same data as the terminal report, no ANSI codes.
+ */
+import type { NormalizedSession } from "../adapters/types.js";
+import type { AggregateResult } from "../aggregate.js";
+import type { Attribution, Categories } from "../attribute.js";
+import type { CacheAnalysis } from "../cost/cache.js";
+import type { CostBreakdown, ModelBreakdown } from "../cost/calculator.js";
+import type { Turn } from "../turns.js";
+import { advise, type Advice } from "../advise.js";
+import { pricingLabel } from "../cost/pricing.js";
+import { dailyTrend } from "../trends.js";
+
+function usd(n: number): string {
+  return `$${n.toFixed(n >= 100 ? 0 : 2)}`;
+}
+
+function tok(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} M`;
+  if (n >= 1e3) return `${Math.round(n / 1e3)} K`;
+  return String(n);
+}
+
+/** Table cells: pipes and newlines would break the row. */
+function cell(s: string): string {
+  return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
+function hhmm(ts: string): string {
+  const d = new Date(ts);
+  return isNaN(d.getTime())
+    ? "??:??"
+    : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function shortDate(ts: string | undefined): string {
+  if (!ts) return "?";
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? "?" : d.toISOString().slice(0, 10);
+}
+
+function categorySection(cats: Categories, totalUSD: number): string[] {
+  const rows: [string, number][] = [
+    ["Model generation (output tokens)", cats.generationUSD],
+    ["Tool results fed back", cats.toolResultsUSD],
+    ["File reads (Read tool)", cats.fileReadsUSD],
+    ["System prompt & overhead", cats.overheadUSD],
+    ["Cache writes (premium)", cats.cacheWritesUSD],
+  ];
+  if (cats.compactionUSD > 0) rows.push(["Context compaction", cats.compactionUSD]);
+  if (cats.serverToolsUSD > 0) rows.push(["Server tools (web search)", cats.serverToolsUSD]);
+  rows.sort((a, b) => b[1] - a[1]);
+  const lines = ["### Where it went", "", "| Category | Share | Cost |", "|---|---:|---:|"];
+  for (const [label, amount] of rows) {
+    const frac = totalUSD > 0 ? amount / totalUSD : 0;
+    lines.push(`| ${label} | ${(frac * 100).toFixed(0)}% | ${usd(amount)} |`);
+  }
+  lines.push("");
+  return lines;
+}
+
+function cacheSection(cache: CacheAnalysis): string[] {
+  const lines = [
+    "### Cache efficiency",
+    "",
+    `- Cache hit rate: **${(cache.hitRate * 100).toFixed(0)}%**, saved ≈ ${usd(cache.savedUSD)} vs. uncached`,
+  ];
+  if (cache.invalidations > 0) {
+    lines.push(
+      `- Wasted on cache re-writes after prefix breaks: **${usd(cache.wastedUSD)}** ` +
+        `(${cache.invalidations} rebuild${cache.invalidations > 1 ? "s" : ""})`,
+    );
+  } else {
+    lines.push("- No mid-session cache rebuilds detected");
+  }
+  lines.push("");
+  return lines;
+}
+
+function adviceSection(advice: Advice): string[] {
+  if (advice.findings.length === 0) return [];
+  const lines = ["### Recommendations", ""];
+  for (const f of advice.findings) {
+    lines.push(`- ${f.severity === "warn" ? "⚠️" : "✅"} ${f.title}`);
+    if (f.detail) lines.push(`  - ${f.detail}`);
+  }
+  if (advice.potentialSavingsUSD >= 0.05) {
+    lines.push("", `Potential savings: ≈ **${usd(advice.potentialSavingsUSD)}**`);
+  }
+  lines.push("");
+  return lines;
+}
+
+function turnSection(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[] {
+  if (turns.length === 0) return [];
+  const title = sessionIdOf
+    ? `Top ${turns.length} most expensive turns (all sessions)`
+    : `Top ${turns.length} most expensive turns`;
+  const lines = [`### ${title}`, ""];
+  lines.push(
+    sessionIdOf ? "| Cost | Session | Time | What happened | In / Out |" : "| Cost | Time | What happened | In / Out |",
+    sessionIdOf ? "|---:|---|---|---|---:|" : "|---:|---|---|---:|",
+  );
+  for (const t of turns) {
+    const sid = sessionIdOf ? ` \`${sessionIdOf(t)}\` |` : "";
+    lines.push(
+      `| ${usd(t.costUSD)} |${sid} ${hhmm(t.startTime)} | ${cell(t.description)} | ` +
+        `${tok(t.inputGrowthTokens)} / ${tok(t.outputTokens)} |`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
+function modelSection(perModel: ModelBreakdown[]): string[] {
+  const lines = ["### Per model", "", "| Model | In | Out | Cost |", "|---|---:|---:|---:|"];
+  for (const m of perModel) {
+    const flag = m.pricedExactly ? "" : " ⚠️ unknown model, sonnet rates";
+    lines.push(
+      `| \`${m.model}\`${flag} | ${tok(m.input + m.cacheRead + m.cacheWrite)} | ${tok(m.output)} | ${usd(m.costUSD)} |`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
+function serverToolLine(st: { webSearch: number; webFetch: number; costUSD: number }): string[] {
+  if (st.webSearch + st.webFetch === 0) return [];
+  const parts: string[] = [];
+  if (st.webSearch > 0) parts.push(`${st.webSearch} web search${st.webSearch === 1 ? "" : "es"}`);
+  if (st.webFetch > 0) parts.push(`${st.webFetch} web fetch${st.webFetch === 1 ? "" : "es"}`);
+  const note = st.costUSD > 0 ? usd(st.costUSD) : "no per-request charge";
+  return [`Server tools: ${parts.join(", ")} (${note})`, ""];
+}
+
+function footer(): string {
+  return `<sub>API-equivalent cost estimate · prices as of ${pricingLabel()} · subscription users pay flat fees · generated by tokenbill</sub>`;
+}
+
+export function renderMarkdown(
+  session: NormalizedSession,
+  cost: CostBreakdown,
+  attr: Attribution,
+  turns: Turn[],
+  cache: CacheAnalysis,
+): string {
+  const lines: string[] = [
+    `## tokenbill: session \`${session.sessionId.slice(0, 8)}\``,
+    "",
+    `**Total estimated cost: ${usd(cost.totalUSD)}** · ${cost.requestCount} API requests · ${session.models.join(", ")}`,
+    "",
+  ];
+  lines.push(...categorySection(attr, cost.totalUSD));
+  for (const e of attr.compactionEvents) {
+    lines.push(
+      `- Context compacted at ${hhmm(e.timestamp)}: cost ${usd(e.costUSD)}, dropped ~${tok(e.droppedTokens)} tokens of history` +
+        (e.subagent ? ` (sub-agent ${e.subagent})` : ""),
+    );
+  }
+  if (attr.compactionEvents.length > 0) lines.push("");
+  lines.push(...cacheSection(cache));
+  lines.push(
+    ...adviceSection(
+      advise({
+        totalUSD: cost.totalUSD,
+        categories: attr,
+        cache,
+        compactionEventCount: attr.compactionEvents.length,
+      }),
+    ),
+  );
+  lines.push(...turnSection(turns));
+  lines.push(...modelSection(cost.perModel));
+  if (cost.subagentUSD > 0) lines.push(`Sub-agents: ${usd(cost.subagentUSD)} of the total`, "");
+  lines.push(...serverToolLine(cost.serverToolUse));
+  lines.push(footer(), "");
+  return lines.join("\n");
+}
+
+export function renderAggregateMarkdown(result: AggregateResult, projectLabel: string): string {
+  const oldest = result.sessions.length ? result.sessions[result.sessions.length - 1].startTime : undefined;
+  const newest = result.sessions.length ? result.sessions[0].startTime : undefined;
+  const lines: string[] = [
+    `## tokenbill: \`${projectLabel}\``,
+    "",
+    `**Total estimated cost: ${usd(result.totalUSD)}** · ${result.sessionCount} session${result.sessionCount === 1 ? "" : "s"}` +
+      (oldest && newest ? ` · ${shortDate(oldest)} → ${shortDate(newest)}` : ""),
+    "",
+  ];
+  lines.push(...categorySection(result.categories, result.totalUSD));
+  if (result.compactionEventCount > 0) {
+    lines.push(
+      `${result.compactionEventCount} context compaction event(s) across all sessions (${usd(result.categories.compactionUSD)} total)`,
+      "",
+    );
+  }
+  lines.push(...cacheSection(result.cache));
+  lines.push(
+    ...adviceSection(
+      advise({
+        totalUSD: result.totalUSD,
+        categories: result.categories,
+        cache: result.cache,
+        compactionEventCount: result.compactionEventCount,
+      }),
+    ),
+  );
+
+  const days = dailyTrend(result.sessions).filter((b) => b.sessions > 0);
+  if (days.length >= 2) {
+    lines.push("### Daily spend", "", "| Day | Cost | Sessions |", "|---|---:|---:|");
+    for (const b of days) lines.push(`| ${b.date} | ${usd(b.costUSD)} | ${b.sessions} |`);
+    lines.push("");
+  }
+
+  lines.push(...turnSection(result.topTurns, (t) => (t as typeof result.topTurns[number]).sessionId.slice(0, 8)));
+  lines.push(...modelSection(result.perModel));
+  lines.push(...serverToolLine(result.serverToolUse));
+
+  lines.push("<details><summary>Sessions (newest first)</summary>", "");
+  lines.push("| Cost | Session | Started | Models |", "|---:|---|---|---|");
+  for (const s of result.sessions) {
+    lines.push(`| ${usd(s.costUSD)} | \`${s.sessionId.slice(0, 8)}\` | ${shortDate(s.startTime)} | ${s.models.join(", ")} |`);
+  }
+  lines.push("", "</details>", "");
+  lines.push(footer(), "");
+  return lines.join("\n");
+}
