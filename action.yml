@@ -1,0 +1,53 @@
+name: tokenbill
+description: Itemized AI coding agent spend from Claude Code session logs, with an optional budget guard.
+author: Emrehan Görgeç
+branding:
+  icon: dollar-sign
+  color: blue
+
+inputs:
+  path:
+    description: Claude Code log directory or a single .jsonl session file. CI runners have no ~/.claude, so point this at logs you committed or downloaded as an artifact.
+    required: true
+  budget:
+    description: Fail the step (exit 2) when the total exceeds this many USD. Empty disables the guard.
+    required: false
+    default: ""
+  version:
+    description: tokenbill version to run from npm, or "local" to run this action's own checkout (requires a prior npm ci and npm run build there).
+    required: false
+    default: latest
+  summary:
+    description: Write the Markdown report to the job summary.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24
+    - name: Resolve command
+      shell: bash
+      env:
+        TB_VERSION: ${{ inputs.version }}
+      run: |
+        if [ "$TB_VERSION" = "local" ]; then
+          echo "TB_CMD=node $GITHUB_ACTION_PATH/dist/cli.js" >> "$GITHUB_ENV"
+        else
+          echo "TB_CMD=npx -y tokenbill@$TB_VERSION" >> "$GITHUB_ENV"
+        fi
+    - name: Report
+      if: inputs.summary == 'true'
+      shell: bash
+      env:
+        TB_PATH: ${{ inputs.path }}
+      run: $TB_CMD "$TB_PATH" --md >> "$GITHUB_STEP_SUMMARY"
+    - name: Budget guard
+      if: inputs.budget != ''
+      shell: bash
+      env:
+        TB_PATH: ${{ inputs.path }}
+        TB_BUDGET: ${{ inputs.budget }}
+      run: $TB_CMD "$TB_PATH" --no-color --budget "$TB_BUDGET" > /dev/null
