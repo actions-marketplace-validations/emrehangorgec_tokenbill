@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.6.0] - unreleased
+## [0.6.0] - 2026-10-10
 
 0.5.0 was versioned in the repo but never published to npm, so its changes ship
 here for the first time.
