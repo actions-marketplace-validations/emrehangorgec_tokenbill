@@ -8,6 +8,40 @@ on:
 
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [24]
+        include:
+          - os: ubuntu-latest
+            node: 18
+          - os: ubuntu-latest
+            node: 20
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # Type checks and the price table audit are platform independent, so
+      # they run once instead of in every matrix cell.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 24
+        run: |
+          npx tsc --noEmit
+          npx tsc --noEmit -p scripts/tsconfig.json
+          npx tsc --noEmit -p test/tsconfig.json
+      # Structural check on the price table (lapsed or overlapping rate
+      # windows). Offline and clock-independent - only fires on a real gap.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 24
+        run: npm run pricing:audit
+      - run: npm test
+
+  # Runs the repo's own action.yml against the committed fixtures with the
+  # code from this checkout, so a broken action surfaces before users hit it.
+  action:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -15,11 +49,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npx tsc --noEmit -p scripts/tsconfig.json
-      - run: npx tsc --noEmit -p test/tsconfig.json
-      # Structural check on the price table (lapsed or overlapping rate
-      # windows). Offline and clock-independent - only fires on a real gap.
-      - run: npm run pricing:audit
-      - run: npm test
+      - run: npm ci && npm run build
+      - uses: ./
+        with:
+          path: fixtures
+          version: local
+          budget: "1000"

@@ -1,0 +1,6 @@
+# Normalize to LF everywhere so golden snapshots and fixtures compare
+# byte-for-byte on Windows checkouts too.
+* text=auto eol=lf
+*.jsonl text eol=lf
+*.snap text eol=lf
+*.svg text eol=lf
