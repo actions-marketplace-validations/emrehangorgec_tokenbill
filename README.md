@@ -112,6 +112,23 @@ Or call the CLI directly:
 - run: npx tokenbill .agent-logs --budget 25
 ```
 
+## Spend across all projects
+
+```bash
+npx tokenbill --all
+npx tokenbill --all --html all-projects.html
+npx tokenbill --all --json
+npx tokenbill --all --budget 100
+```
+
+`--all` combines every session under `~/.claude/projects` into one report:
+total estimated cost, per-session totals, model breakdown, daily spend trend,
+and the most expensive turns across projects. Subagent logs are included through
+their parent session, so they are not counted again as separate sessions.
+Markdown output and the budget guard work too. The budget applies to the entire
+recorded history, not a monthly allowance. You cannot combine `--all` with a
+session or project path.
+
 ## What it tells you
 
 - **Total estimated cost** - token usage from the logs × current per-token prices, deduplicated per API request, priced per model (mixed-model sessions work), cache reads at 0.1×, cache writes at their 5-minute (1.25×) or 1-hour (2×) premium, plus per-request server tool charges.

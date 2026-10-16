@@ -8,7 +8,7 @@ import { attribute } from "./attribute.js";
 import { analyzeCache } from "./cost/cache.js";
 import { calculate } from "./cost/calculator.js";
 import { overridePricing, overrideServerToolPricing } from "./cost/pricing.js";
-import { claudeProjectsRoot, encodeProjectPath, resolveProjectLogDir } from "./project-dir.js";
+import { allProjectSessionFiles, claudeProjectsRoot, encodeProjectPath, resolveProjectLogDir } from "./project-dir.js";
 import { renderAggregateHtml, renderHtml } from "./report/html.js";
 import { renderAggregateJson, renderJson } from "./report/json.js";
 import { renderAggregateMarkdown, renderMarkdown } from "./report/markdown.js";
@@ -28,6 +28,8 @@ A directory argument (a project's own source folder or its
 A single .jsonl file gives the full detailed report for just that session.
 
 Options:
+  --all             analyze sessions across every Claude Code project
+                    (cannot be combined with a session or project path)
   --json            machine-readable output
   --html [file]     write a shareable single-file HTML report
                     (default: tokenbill-report.html)
@@ -67,7 +69,14 @@ type Target =
   | { mode: "single"; file: string }
   | { mode: "aggregate"; files: string[]; label: string };
 
-function resolveTarget(arg: string | undefined): Target {
+function resolveTarget(arg: string | undefined, all: boolean): Target {
+  if (all) {
+    const files = allProjectSessionFiles();
+    if (files.length === 0) {
+      throw new Error("No Claude Code sessions found under ~/.claude/projects");
+    }
+    return { mode: "aggregate", files, label: "All projects" };
+  }
   if (!arg) {
     const projectDir = resolveProjectLogDir(process.cwd());
     const files = projectDir ? findSessionFiles(projectDir) : [];
@@ -138,6 +147,7 @@ if (process.argv[2] === "statusline") {
 // --- arg parsing -----------------------------------------------------------
 const argv = process.argv.slice(2);
 let json = false;
+let all = false;
 let html: string | undefined;
 let md: string | true | undefined;
 let top = 10;
@@ -175,6 +185,8 @@ for (let i = 0; i < argv.length; i++) {
     process.exit(0);
   } else if (a === "--json") {
     json = true;
+  } else if (a === "--all") {
+    all = true;
   } else if (a === "--html") {
     html =
       argv[i + 1] && argv[i + 1].endsWith(".html") ? path.resolve(argv[++i]) : path.resolve("tokenbill-report.html");
@@ -234,6 +246,11 @@ if ([json, html, md].filter(Boolean).length > 1) {
   process.exit(1);
 }
 
+if (all && target !== undefined) {
+  console.error("--all cannot be combined with a session or project path");
+  process.exit(1);
+}
+
 /** --md goes to stdout unless a .md file was named. */
 function emitMarkdown(text: string): void {
   if (typeof md === "string") {
@@ -247,7 +264,7 @@ function emitMarkdown(text: string): void {
 let totalUSD = 0;
 
 try {
-  const resolved = resolveTarget(target);
+  const resolved = resolveTarget(target, all);
 
   if (resolved.mode === "single") {
     const session = claudeCodeAdapter.parse(resolved.file);

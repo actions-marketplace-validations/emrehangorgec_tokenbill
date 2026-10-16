@@ -11,6 +11,22 @@ export function claudeProjectsRoot(): string {
   return path.join(os.homedir(), ".claude", "projects");
 }
 
+/** Only top-level sessions: the adapter loads each session's subagents itself. */
+export function allProjectSessionFiles(root = claudeProjectsRoot()): string[] {
+  if (!fs.existsSync(root)) return [];
+  const files: string[] = [];
+  for (const project of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!project.isDirectory()) continue;
+    const dir = path.join(root, project.name);
+    for (const session of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (session.isFile() && session.name.endsWith(".jsonl")) {
+        files.push(path.join(dir, session.name));
+      }
+    }
+  }
+  return files.sort();
+}
+
 function norm(p: string): string {
   return path.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
 }
