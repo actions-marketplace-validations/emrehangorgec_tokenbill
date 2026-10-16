@@ -57,7 +57,7 @@ jobs:
             echo "Automated weekly run of \`npm run pricing:sync\`."
             echo
             if grep -q "MISMATCH" sync-output.log; then
-              echo "**Override mismatch detected below - review \`pricing.overrides.json\` before merging.**"
+              echo "**Override mismatch detected below. Review \`pricing.overrides.json\` before merging.**"
               echo
             fi
             echo '```'
@@ -65,8 +65,12 @@ jobs:
             echo '```'
           } > "$BODY_FILE"
 
-          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
-            gh pr edit "$BRANCH" --body-file "$BODY_FILE"
+          # A branch can have older merged or closed PRs. Only reuse an open
+          # PR, and address it by number so gh cannot select an older one.
+          PR_NUMBER="$(gh pr list --state open --base main --head "$BRANCH" \
+            --json number --jq '.[0].number // empty')"
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr edit "$PR_NUMBER" --body-file "$BODY_FILE"
           else
             gh pr create --title "chore: sync pricing" --body-file "$BODY_FILE" \
               --base main --head "$BRANCH"
