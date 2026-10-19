@@ -57,6 +57,7 @@ Options:
 
 ```
 --json            machine-readable output (schemaVersion 2)
+--since <date>    include sessions starting on or after YYYY-MM-DD (UTC)
 --html [file]     shareable single-file HTML report (default: tokenbill-report.html)
 --md [file]       GitHub Markdown report to stdout or a .md file (PR comments, job summaries)
 --top <n>         number of expensive turns to show (default 10)
@@ -130,6 +131,17 @@ recorded history, not a monthly allowance. You cannot combine `--all` with a
 session or project path.
 
 ## What it tells you
+
+Filter by session start date, including the specified day at midnight UTC:
+
+```bash
+npx tokenbill --since 2026-10-01
+npx tokenbill --all --since 2026-10-01 --json
+```
+
+This includes each matching session in full, even if it spans multiple days.
+Sessions without a recorded start time are excluded when filtering. If no
+sessions match, the command exits with code 1 and an explanatory message.
 
 - **Total estimated cost** - token usage from the logs × current per-token prices, deduplicated per API request, priced per model (mixed-model sessions work), cache reads at 0.1×, cache writes at their 5-minute (1.25×) or 1-hour (2×) premium, plus per-request server tool charges.
 - **Where it went** - output generation vs. tool results vs. file reads vs. system overhead vs. cache-write premiums vs. context compaction vs. server tools, attributed by an incremental-delta heuristic. Categories always sum exactly to the total.

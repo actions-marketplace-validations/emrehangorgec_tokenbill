@@ -30,6 +30,7 @@ A single .jsonl file gives the full detailed report for just that session.
 Options:
   --all             analyze sessions across every Claude Code project
                     (cannot be combined with a session or project path)
+  --since <date>    include sessions starting on or after YYYY-MM-DD (UTC)
   --json            machine-readable output
   --html [file]     write a shareable single-file HTML report
                     (default: tokenbill-report.html)
@@ -153,6 +154,7 @@ let md: string | true | undefined;
 let top = 10;
 let budget: number | undefined;
 let target: string | undefined;
+let since: string | undefined;
 
 /**
  * --pricing accepts either the bare model array (original format) or an object
@@ -187,6 +189,15 @@ for (let i = 0; i < argv.length; i++) {
     json = true;
   } else if (a === "--all") {
     all = true;
+  } else if (a === "--since") {
+    const date = argv[++i];
+    const time = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? Date.parse(`${date}T00:00:00.000Z`) : NaN;
+    if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
+      console.error("--since expects a valid date in YYYY-MM-DD format (UTC)");
+      process.exit(1);
+    }
+    since = date;
   } else if (a === "--html") {
     html =
       argv[i + 1] && argv[i + 1].endsWith(".html") ? path.resolve(argv[++i]) : path.resolve("tokenbill-report.html");
@@ -265,9 +276,15 @@ let totalUSD = 0;
 
 try {
   const resolved = resolveTarget(target, all);
+  // Filter whole sessions by their recorded start, never by file modification time.
+  const cutoff = since ? Date.parse(`${since}T00:00:00.000Z`) : undefined;
+  const matchesSince = (session: ReturnType<typeof claudeCodeAdapter.parse>): boolean =>
+    cutoff === undefined || (session.startTime !== undefined && Date.parse(session.startTime) >= cutoff);
+  const noMatches = () => new Error(`No sessions starting on or after ${since} (UTC)`);
 
   if (resolved.mode === "single") {
     const session = claudeCodeAdapter.parse(resolved.file);
+    if (!matchesSince(session)) throw noMatches();
     const cost = calculate(session);
     const attr = attribute(session);
     const turns = topTurns(session, top);
@@ -286,7 +303,8 @@ try {
       );
     }
   } else {
-    const sessions = resolved.files.map((f) => claudeCodeAdapter.parse(f));
+    const sessions = resolved.files.map((f) => claudeCodeAdapter.parse(f)).filter(matchesSince);
+    if (since && sessions.length === 0) throw noMatches();
     const result = aggregate(sessions, top);
     const label = maskLabel(resolved.label);
     totalUSD = result.totalUSD;
