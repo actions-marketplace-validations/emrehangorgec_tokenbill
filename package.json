@@ -3,14 +3,33 @@
   "version": "0.6.0",
   "description": "Where did my AI budget go? Token cost explainer for Claude Code sessions.",
   "type": "module",
-  "bin": { "tokenbill": "dist/cli.js" },
+  "bin": {
+    "tokenbill": "dist/cli.js"
+  },
   "main": "dist/cli.js",
-  "files": ["dist"],
-  "repository": { "type": "git", "url": "git+https://github.com/emrehangorgec/tokenbill.git" },
-  "bugs": { "url": "https://github.com/emrehangorgec/tokenbill/issues" },
+  "files": [
+    "dist",
+    "fonts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emrehangorgec/tokenbill.git"
+  },
+  "bugs": {
+    "url": "https://github.com/emrehangorgec/tokenbill/issues"
+  },
   "homepage": "https://github.com/emrehangorgec/tokenbill#readme",
-  "keywords": ["claude-code", "claude", "cli", "token-cost", "ai-cost", "llm-cost"],
-  "engines": { "node": ">=18" },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "cli",
+    "token-cost",
+    "ai-cost",
+    "llm-cost"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "author": "Emrehan Görgeç",
   "scripts": {
     "build": "tsc",
@@ -23,10 +42,12 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "vitest": "^2.0.0",
+    "@types/node": "^22.0.0",
     "tsx": "^4.16.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
   }
 }
-
