@@ -6,6 +6,8 @@ Claude Code sessions cost real money and you get zero visibility into why.
 `tokenbill` reads the session logs already on your disk and gives you the bill,
 itemized. No network calls, no config, no account.
 
+![tokenbill share card](assets/card.png)
+
 ![tokenbill demo](assets/demo.svg)
 
 ```
@@ -63,8 +65,40 @@ Options:
 --top <n>         number of expensive turns to show (default 10)
 --budget <usd>    exit 2 if the total exceeds this amount (for CI)
 --pricing <file>  override the built-in price table with your own JSON
+--redact          hide your prompt text (turns show tool activity instead)
 --no-color        disable colored output (NO_COLOR env also respected)
 ```
+
+### Share card
+
+`tokenbill card` turns the same numbers into one image with the 1200×630
+layout X, Reddit and LinkedIn use for link previews. The PNG is rendered at 2×
+(2400×1260) so it stays sharp on high-density screens; the SVG is 1200×630.
+
+```
+npx tokenbill card                  # this project → tokenbill-card.png
+npx tokenbill card --all            # every project
+npx tokenbill card --plan max5      # adds "N× my plan's price" (last 30 days)
+npx tokenbill card --out card.svg   # vector instead of PNG
+```
+
+The card shows the total, a single spectrum band of where every dollar went,
+the prompt that cost the most in one turn, and the estimated savings the
+report's recommendations point to (cache breaks, compactions, heavy file
+reads). That figure is a heuristic estimate, not money proven lost: some
+compactions are unavoidable on long tasks. It also prints a ready-to-paste
+caption.
+The card at the top of this page was made with
+`tokenbill card --redact --plan max5` on a real project.
+
+`--plan` takes `pro`, `max5`, `max20` or a monthly dollar amount. Without
+`--since` the card covers the last 30 days and compares against one month's
+fee; with `--since` the fee is prorated to that window.
+
+The card quotes your priciest prompt. Add `--redact` to show the tool
+activity instead. Rendering happens locally with bundled open-source fonts
+(Space Grotesk, JetBrains Mono); no browser is needed. If the PNG renderer
+has no prebuilt binary for your platform, the card is written as SVG.
 
 ### Live cost in your Claude Code status line
 
@@ -109,7 +143,7 @@ to the job summary and applies the guard:
 Or call the CLI directly:
 
 ```yaml
-- run: npx tokenbill .agent-logs --md >> "$GITHUB_STEP_SUMMARY"
+- run: npx tokenbill .agent-logs --md --redact >> "$GITHUB_STEP_SUMMARY"
 - run: npx tokenbill .agent-logs --budget 25
 ```
 
@@ -148,7 +182,7 @@ sessions match, the command exits with code 1 and an explanatory message.
 - **Server tools** - web searches billed per request ($10 per 1,000), counted alongside the token costs they generate. Web fetch has no per-request charge, so it shows its call count and contributes only the tokens the fetched content adds.
 - **Compaction events** - when your context got summarized mid-session, what it cost, and how many tokens of history were dropped.
 - **Cache efficiency** - hit rate, dollars saved vs. running uncached, and dollars wasted on mid-session cache rebuilds (the signature of a broken prompt prefix).
-- **Top expensive turns** - the moments that actually burned the budget, each with a one-line description of what happened.
+- **Top expensive turns** - the moments that actually burned the budget, labeled with the prompt you typed and what the agent did in response (`--redact` keeps only the latter).
 - **Recommendations** - actionable findings with dollar impact: cache prefix breaks, file-read-heavy sessions, expensive compactions, low hit rates, plus an honest "potential savings" estimate.
 - **Daily spend trend** - a sparkline and per-day breakdown of the last 14 days (project reports), so you can see spend habits over time.
 - **Markdown report** - `--md` renders the same report as GitHub tables for PR comments and job summaries.
@@ -165,9 +199,12 @@ sessions match, the command exits with code 1 and an explanatory message.
 
 ## Privacy
 
-`tokenbill` never makes a network call. It reads local files and prints text. The test fixtures in this repo are anonymized (same-length placeholder text; structure, token counts and tool names preserved) via [`scripts/anonymize.ts`](scripts/anonymize.ts).
+`tokenbill` never makes a network call. It reads local files and prints text,
+or writes the report or card file you asked for. Reports quote your prompts to
+make expensive turns recognizable; that text stays on your machine unless you
+share the output, and `--redact` removes it before you do. The test fixtures in this repo are anonymized (same-length placeholder text; structure, token counts and tool names preserved) via [`scripts/anonymize.ts`](scripts/anonymize.ts).
 
-That holds even for pricing: [`scripts/sync-pricing.ts`](scripts/sync-pricing.ts) is run manually to refresh the table, and its output is committed as source. The published package contains `dist` only, so there is no fetch path at runtime, no cache directory, and nothing to opt out of.
+That holds even for pricing: [`scripts/sync-pricing.ts`](scripts/sync-pricing.ts) is run manually to refresh the table, and its output is committed as source. The published package contains `dist` and the card fonts only, so there is no fetch path at runtime, no cache directory, and nothing to opt out of.
 
 ## Supported agents
 

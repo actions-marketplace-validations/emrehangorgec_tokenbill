@@ -28,6 +28,13 @@ A new adapter (Codex CLI, Gemini CLI, etc.) needs its own file under
 `src/adapters/`, a `detect`/`parse` pair, and test fixtures under `fixtures/`
 covering a normal session plus edge cases (corrupt lines, missing fields).
 
+That is not yet enough to ship a new agent. Today the CLI calls
+`claudeCodeAdapter.parse` directly and only discovers logs under
+`~/.claude/projects`, and the price table only covers Anthropic models. A
+second agent also needs log discovery for its own directory, adapter selection
+in `src/cli.ts`, and prices for its models. Open an issue to agree on that
+design before starting.
+
 ## Updating pricing
 
 **The price table is generated, not hand-edited.** Three files, one of which you
@@ -45,7 +52,7 @@ npm run pricing:audit   # validate it offline (also runs in CI and on publish)
 ```
 
 `npm run pricing:sync` is the only thing in this project that touches the
-network, and it never ships - `files` publishes `dist` only. tokenbill itself
+network, and it never ships - `files` publishes `dist` and `fonts` only. tokenbill itself
 still makes zero network calls; see [Privacy](README.md#privacy). Run it
 manually whenever upstream rates need refreshing.
 
@@ -94,6 +101,49 @@ array, or an object with the parts you want to replace:
 }
 ```
 
+## Report wording
+
+Cost category names and their one-line explanations live in one place,
+[`src/categories.ts`](src/categories.ts). The terminal, HTML, Markdown and card
+renderers all read from it, so a wording change there shows up everywhere.
+Keep labels plain: a reader who has never heard of prompt caching should still
+understand what the money paid for.
+
+## Prompt text and privacy
+
+Expensive turns are labeled with the prompt the user typed
+([`promptPreview`](src/adapters/claude-code.ts) cleans it into one line, and
+[`src/privacy.ts`](src/privacy.ts) decides whether it is shown). Any output
+that can leave the user's machine without them reading it first must respect
+`--redact`; the GitHub Action passes it for job summaries. If you add a new
+report or output path, render turn labels through `turnLabel` / `turnPrompt`,
+never through `turn.prompt` directly.
+
+## Share card
+
+`tokenbill card` is split in two:
+
+| File | Holds |
+|---|---|
+| [`src/report/card.ts`](src/report/card.ts) | the card as a pure SVG string, plus the caption and plan prices |
+| [`src/card-png.ts`](src/card-png.ts) | SVG to PNG through `@resvg/resvg-js`, with the bundled fonts |
+
+`@resvg/resvg-js` is an **optional** dependency: when it has no prebuilt binary
+for a platform the card is written as SVG instead, so it must never become a
+hard requirement. The fonts under [`fonts/`](fonts) (Space Grotesk and
+JetBrains Mono) are SIL OFL licensed; their licenses sit next to them and
+must ship with them.
+
+Monthly plan prices for `--plan` are in `PLANS` in `card.ts`. They are list
+prices in USD; check Anthropic's pricing page when changing them.
+
+The README card ([`assets/card.png`](assets/card.png)) is generated from a real
+project with prompts hidden. Regenerate it with `--redact`, always:
+
+```
+npx tsx src/cli.ts card <project-dir> --redact --plan max5 --out assets/card.png
+```
+
 ## Test fixtures
 
 Fixtures under `fixtures/` are anonymized real session logs (same-length
@@ -111,4 +161,5 @@ npx vitest run -u
 ## Before opening a PR
 
 - `npm test` and `npx tsc --noEmit` pass.
+- If you changed the card, attach a before/after PNG to the PR.
 - Keep the change focused - avoid bundling unrelated edits.

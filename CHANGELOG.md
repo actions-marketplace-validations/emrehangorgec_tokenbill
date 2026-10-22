@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `tokenbill card`: a share image of a project's spend (1200×630 layout, PNG
+  rendered at 2×), made locally without a browser, with a ready-to-paste caption and an optional
+  `--plan` comparison against a Claude subscription's price.
+- Expensive turns are labeled with the prompt that started them.
+- `--redact` hides prompt text in every report; the GitHub Action uses it for
+  job summaries.
+- README now opens with a share card generated from a real project with
+  prompts hidden.
+
+### Changed
+- Cost categories use plain-language names, and the terminal report explains
+  the biggest one.
+- Project reports are titled with the project folder name instead of the log
+  directory path.
+- MCP tools appear under their tool name (`update_plan`) instead of the full
+  `mcp__server__tool` identifier.
+- `@resvg/resvg-js` added as an optional dependency, and the published package
+  now includes the card fonts.
+
 ## [0.6.0] - 2026-10-10
 
 0.5.0 was versioned in the repo but never published to npm, so its changes ship
