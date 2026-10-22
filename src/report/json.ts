@@ -1,3 +1,4 @@
+import { turnPrompt } from "../privacy.js";
 import type { NormalizedSession } from "../adapters/types.js";
 import type { AggregateResult } from "../aggregate.js";
 import type { Attribution } from "../attribute.js";
@@ -81,6 +82,7 @@ export function renderJson(
         startTime: t.startTime,
         costUSD: round(t.costUSD),
         description: t.description,
+        prompt: turnPrompt(t),
         outputTokens: t.outputTokens,
         inputGrowthTokens: Math.round(t.inputGrowthTokens),
         hasCompaction: t.hasCompaction,
@@ -135,6 +137,7 @@ export function renderAggregateJson(result: AggregateResult, projectLabel: strin
         startTime: t.startTime,
         costUSD: round(t.costUSD),
         description: t.description,
+        prompt: turnPrompt(t),
         outputTokens: t.outputTokens,
         inputGrowthTokens: Math.round(t.inputGrowthTokens),
         hasCompaction: t.hasCompaction,

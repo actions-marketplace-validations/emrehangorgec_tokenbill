@@ -78,3 +78,18 @@ export function resolveProjectLogDir(sourceDir: string): string | undefined {
   if (fs.existsSync(encoded)) return encoded;
   return findByCwdField(sourceDir);
 }
+
+/**
+ * Human name for a set of sessions: the folder name they ran in, when they
+ * all share one. Undefined when sessions span several folders or the logs
+ * carry no cwd.
+ */
+export function projectName(cwds: (string | undefined)[]): string | undefined {
+  const names = new Set(
+    cwds
+      .filter((c): c is string => !!c)
+      // Split on both separators: logs from Windows may be read on POSIX and vice versa.
+      .map((c) => c.split(/[\\/]/).filter(Boolean).pop() ?? c),
+  );
+  return names.size === 1 ? [...names][0] : undefined;
+}

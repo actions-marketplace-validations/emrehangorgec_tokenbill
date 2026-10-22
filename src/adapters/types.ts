@@ -36,7 +36,13 @@ export interface NormalizedRequest {
 export type TimelineEvent =
   | { kind: "request"; request: NormalizedRequest }
   | { kind: "toolResult"; toolName: string; chars: number; timestamp: string }
-  | { kind: "userPrompt"; chars: number; timestamp: string };
+  | {
+      kind: "userPrompt";
+      chars: number;
+      timestamp: string;
+      /** cleaned one-line preview of what the user typed (absent for harness-injected text) */
+      text?: string;
+    };
 
 /** One chronological event stream (the main session, or one subagent). */
 export interface Stream {
@@ -52,6 +58,8 @@ export interface NormalizedSession {
   models: string[];
   startTime?: string;
   endTime?: string;
+  /** working directory the session ran in, when the log records it */
+  cwd?: string;
   skippedLines: number;
   warnings: string[];
 }

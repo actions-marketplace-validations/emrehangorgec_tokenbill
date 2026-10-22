@@ -2,6 +2,8 @@
  * GitHub-flavored Markdown report: for PR comments, `$GITHUB_STEP_SUMMARY`
  * and issue threads. Same data as the terminal report, no ANSI codes.
  */
+import { categoryRows } from "../categories.js";
+import { turnLabel } from "../privacy.js";
 import type { NormalizedSession } from "../adapters/types.js";
 import type { AggregateResult } from "../aggregate.js";
 import type { Attribution, Categories } from "../attribute.js";
@@ -41,20 +43,10 @@ function shortDate(ts: string | undefined): string {
 }
 
 function categorySection(cats: Categories, totalUSD: number): string[] {
-  const rows: [string, number][] = [
-    ["Model generation (output tokens)", cats.generationUSD],
-    ["Tool results fed back", cats.toolResultsUSD],
-    ["File reads (Read tool)", cats.fileReadsUSD],
-    ["System prompt & overhead", cats.overheadUSD],
-    ["Cache writes (premium)", cats.cacheWritesUSD],
-  ];
-  if (cats.compactionUSD > 0) rows.push(["Context compaction", cats.compactionUSD]);
-  if (cats.serverToolsUSD > 0) rows.push(["Server tools (web search)", cats.serverToolsUSD]);
-  rows.sort((a, b) => b[1] - a[1]);
   const lines = ["### Where it went", "", "| Category | Share | Cost |", "|---|---:|---:|"];
-  for (const [label, amount] of rows) {
-    const frac = totalUSD > 0 ? amount / totalUSD : 0;
-    lines.push(`| ${label} | ${(frac * 100).toFixed(0)}% | ${usd(amount)} |`);
+  for (const { label, amountUSD } of categoryRows(cats)) {
+    const frac = totalUSD > 0 ? amountUSD / totalUSD : 0;
+    lines.push(`| ${label} | ${(frac * 100).toFixed(0)}% | ${usd(amountUSD)} |`);
   }
   lines.push("");
   return lines;
@@ -105,7 +97,7 @@ function turnSection(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[]
   for (const t of turns) {
     const sid = sessionIdOf ? ` \`${sessionIdOf(t)}\` |` : "";
     lines.push(
-      `| ${usd(t.costUSD)} |${sid} ${hhmm(t.startTime)} | ${cell(t.description)} | ` +
+      `| ${usd(t.costUSD)} |${sid} ${hhmm(t.startTime)} | ${cell(turnLabel(t))} | ` +
         `${tok(t.inputGrowthTokens)} / ${tok(t.outputTokens)} |`,
     );
   }

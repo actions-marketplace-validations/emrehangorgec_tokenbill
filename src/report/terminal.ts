@@ -5,6 +5,8 @@ import type { CacheAnalysis } from "../cost/cache.js";
 import type { CostBreakdown } from "../cost/calculator.js";
 import type { Turn } from "../turns.js";
 import { advise, type Advice } from "../advise.js";
+import { categoryRows } from "../categories.js";
+import { turnLabel } from "../privacy.js";
 import { pricingLabel } from "../cost/pricing.js";
 import { dailyTrend } from "../trends.js";
 import { bold, dim, paint, palette } from "./theme.js";
@@ -48,23 +50,17 @@ function hhmm(ts: string): string {
 }
 
 function categoryLines(attr: Attribution, totalUSD: number): string[] {
-  const rows: [string, number, number][] = [
-    ["Model generation (output tokens)", attr.generationUSD, palette.generation],
-    ["Tool results fed back", attr.toolResultsUSD, palette.toolResults],
-    ["File reads (Read tool)", attr.fileReadsUSD, palette.fileReads],
-    ["System prompt & overhead", attr.overheadUSD, palette.overhead],
-    ["Cache writes (premium)", attr.cacheWritesUSD, palette.cacheWrites],
-  ];
-  if (attr.compactionUSD > 0) rows.push(["Context compaction", attr.compactionUSD, palette.compaction]);
-  if (attr.serverToolsUSD > 0)
-    rows.push(["Server tools (web search)", attr.serverToolsUSD, palette.serverTools]);
-  rows.sort((a, b) => b[1] - a[1]);
+  const rows = categoryRows(attr);
   const lines = [`  ${bold("Where it went")}`, dim(`  ${RULE}`)];
-  for (const [label, amount, color] of rows) {
-    const frac = totalUSD > 0 ? amount / totalUSD : 0;
+  for (const { key, label, amountUSD } of rows) {
+    const color = palette[key];
+    const frac = totalUSD > 0 ? amountUSD / totalUSD : 0;
     lines.push(
-      `  ${paint(color, label.padEnd(34))} ${bar(frac, color)} ${pct(frac)}${usd(amount).padStart(9)}`,
+      `  ${paint(color, label.padEnd(34))} ${bar(frac, color)} ${pct(frac)}${usd(amountUSD).padStart(9)}`,
     );
+  }
+  if (rows[0] && rows[0].amountUSD > 0) {
+    lines.push(dim(`  Biggest line: ${rows[0].label.toLowerCase()} - ${rows[0].hint}`));
   }
   lines.push(dim(`  ${RULE}`));
   return lines;
@@ -79,7 +75,7 @@ function turnLines(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[] {
   for (const t of turns) {
     const sid = sessionIdOf ? dim(`${sessionIdOf(t)}  `) : "";
     lines.push(
-      `  ${bold(usd(t.costUSD).padStart(7))}  ${sid}${hhmm(t.startTime)}  ${t.description} ` +
+      `  ${bold(usd(t.costUSD).padStart(7))}  ${sid}${hhmm(t.startTime)}  ${turnLabel(t)} ` +
         dim(`(${tok(t.inputGrowthTokens)} in / ${tok(t.outputTokens)} out)`),
     );
   }

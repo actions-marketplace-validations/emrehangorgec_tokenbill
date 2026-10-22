@@ -16,6 +16,14 @@ export interface Turn {
   subagents: Set<string>;
   hasCompaction: boolean;
   description: string;
+  /** what the user typed to start this turn, when it was a real prompt */
+  prompt?: string;
+}
+
+/** MCP tools log as mcp__<server>__<tool>; the tool part is what reads well. */
+function toolName(name: string): string {
+  const m = /^mcp__.+?__(.+)$/.exec(name);
+  return m ? m[1] : name;
 }
 
 function describe(t: Turn): string {
@@ -27,7 +35,7 @@ function describe(t: Turn): string {
     parts.push(
       tools
         .slice(0, 3)
-        .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
+        .map(([name, n]) => (n > 1 ? `${toolName(name)} ×${n}` : toolName(name)))
         .join(" + "),
     );
     if (tools.length > 3) parts.push(`+${tools.length - 3} more tools`);
@@ -43,8 +51,9 @@ export function segmentTurns(session: NormalizedSession): Turn[] {
   const turns: Turn[] = [];
   let cur: Turn | undefined;
   let prevEffIn: number | null = null;
+  let lastPrompt: string | undefined;
 
-  const newTurn = (ts: string): Turn => ({
+  const newTurn = (ts: string, prompt?: string): Turn => ({
     index: turns.length,
     startTime: ts,
     costUSD: 0,
@@ -54,6 +63,7 @@ export function segmentTurns(session: NormalizedSession): Turn[] {
     subagents: new Set(),
     hasCompaction: false,
     description: "",
+    prompt,
   });
 
   const addRequest = (t: Turn, req: NormalizedRequest) => {
@@ -76,7 +86,10 @@ export function segmentTurns(session: NormalizedSession): Turn[] {
   for (const ev of main.events) {
     if (ev.kind === "userPrompt") {
       if (cur) turns.push(cur);
-      cur = newTurn(ev.timestamp);
+      // Harness messages (command output, interrupts) carry no text of their
+      // own; they continue whatever the user last asked for.
+      lastPrompt = ev.text ?? lastPrompt;
+      cur = newTurn(ev.timestamp, lastPrompt);
     } else if (ev.kind === "request") {
       cur ??= newTurn(ev.request.timestamp);
       addRequest(cur, ev.request);

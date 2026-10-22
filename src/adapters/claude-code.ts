@@ -81,6 +81,30 @@ function toolResultChars(rec: any, block: any): number {
   return 0;
 }
 
+const PREVIEW_CHARS = 160;
+
+/**
+ * One-line preview of a typed prompt. Harness-injected messages (slash command
+ * wrappers, interrupt markers, continuation summaries) get no preview, and
+ * pasted blocks collapse to a marker so long pastes don't drown the line.
+ */
+export function promptPreview(raw: string): string | undefined {
+  if (raw.startsWith("[Request interrupted")) return undefined;
+  if (raw.startsWith("This session is being continued from a previous conversation")) {
+    return undefined;
+  }
+  // Slash commands arrive wrapped in tags; keep "/name args" as the prompt.
+  const cmd = /<command-name>([^<]*)<\/command-name>/.exec(raw)?.[1]?.trim();
+  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(raw)?.[1]?.trim();
+  const text = (cmd ? `${cmd.startsWith("/") ? cmd : `/${cmd}`} ${args ?? ""}` : raw)
+    .replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, " [pasted text] ")
+    .replace(/<(command-[a-z-]+|local-command-[a-z-]+|system-reminder)>[\s\S]*?<\/\1>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return undefined;
+  return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS - 1)}…` : text;
+}
+
 interface ParseResult {
   stream: Stream;
   requests: NormalizedRequest[];
@@ -89,6 +113,7 @@ interface ParseResult {
   warnings: string[];
   firstTs?: string;
   lastTs?: string;
+  cwd?: string;
 }
 
 function parseFile(file: string, subagent?: string): ParseResult {
@@ -117,6 +142,7 @@ function parseFile(file: string, subagent?: string): ParseResult {
       continue;
     }
     if (rec.sessionId && !res.sessionId) res.sessionId = rec.sessionId;
+    if (typeof rec.cwd === "string" && !res.cwd) res.cwd = rec.cwd;
     if (rec.timestamp) {
       if (!res.firstTs || rec.timestamp < res.firstTs) res.firstTs = rec.timestamp;
       if (!res.lastTs || rec.timestamp > res.lastTs) res.lastTs = rec.timestamp;
@@ -178,6 +204,7 @@ function parseFile(file: string, subagent?: string): ParseResult {
           kind: "userPrompt",
           chars: content.length,
           timestamp: rec.timestamp ?? "",
+          text: rec.isMeta ? undefined : promptPreview(content),
         });
       } else if (Array.isArray(content)) {
         let sawToolResult = false;
@@ -193,12 +220,17 @@ function parseFile(file: string, subagent?: string): ParseResult {
           }
         }
         if (!sawToolResult) {
-          const chars = content.reduce(
-            (a: number, b: any) => a + (typeof b?.text === "string" ? b.text.length : 0),
-            0,
-          );
+          const parts: string[] = content
+            .map((b: any) => (typeof b?.text === "string" ? b.text : ""))
+            .filter(Boolean);
+          const chars = parts.reduce((a, t) => a + t.length, 0);
           if (chars > 0) {
-            events.push({ kind: "userPrompt", chars, timestamp: rec.timestamp ?? "" });
+            events.push({
+              kind: "userPrompt",
+              chars,
+              timestamp: rec.timestamp ?? "",
+              text: rec.isMeta ? undefined : promptPreview(parts.join("\n")),
+            });
           }
         }
       }
@@ -254,6 +286,7 @@ export const claudeCodeAdapter: Adapter = {
       models: [...new Set(requests.map((r) => r.model))],
       startTime: firstTs,
       endTime: lastTs,
+      cwd: main.cwd,
       skippedLines: skipped,
       warnings,
     };
