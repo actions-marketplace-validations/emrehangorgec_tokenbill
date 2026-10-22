@@ -9,13 +9,13 @@ exports[`markdown report > snapshot: aggregate 1`] = `
 
 | Category | Share | Cost |
 |---|---:|---:|
-| System prompt & overhead | 34% | $2.63 |
-| Cache writes (premium) | 32% | $2.47 |
-| Model generation (output tokens) | 27% | $2.10 |
-| Context compaction | 1% | $0.06 |
-| Server tools (web search) | 1% | $0.04 |
-| Tool results fed back | 0% | $0.02 |
-| File reads (Read tool) | 0% | $0.00 |
+| Re-sending the conversation | 34% | $2.63 |
+| Caching the context | 32% | $2.47 |
+| Writing replies & code | 27% | $2.10 |
+| Summarizing long chats | 1% | $0.06 |
+| Web searches | 1% | $0.04 |
+| Command & tool output | 0% | $0.02 |
+| Files it read | 0% | $0.00 |
 
 2 context compaction event(s) across all sessions ($0.06 total)
 
@@ -42,11 +42,11 @@ Potential savings: ≈ **$0.95**
 
 | Cost | Session | Time | What happened | In / Out |
 |---:|---|---|---|---:|
-| $3.50 | \`11111111\` | 09:59 | text response | 100 K / 60 K |
-| $1.48 | \`434bccac\` | 07:44 | Write ×2 + Read + Edit, +1 more tools, sub-agent ×1 | 50 K / 2 K |
-| $1.39 | \`434bccac\` | 07:44 | Write ×2 + Read + Edit, +1 more tools | 50 K / 2 K |
-| $0.60 | \`22222222\` | 09:59 | text response | 100 K / 20 K |
-| $0.27 | \`434bccac\` | 07:41 | Bash + Skill | 26 K / 761 |
+| $3.50 | \`11111111\` | 09:59 | "abcdefghijabcdefghij" · text response | 100 K / 60 K |
+| $1.48 | \`434bccac\` | 07:44 | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" · Write ×2 + Read + Edit, +1 more tools, sub-agent ×1 | 50 K / 2 K |
+| $1.39 | \`434bccac\` | 07:44 | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" · Write ×2 + Read + Edit, +1 more tools | 50 K / 2 K |
+| $0.60 | \`22222222\` | 09:59 | "abcdefghijabcdefghij" · text response | 100 K / 20 K |
+| $0.27 | \`434bccac\` | 07:41 | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" · Bash + Skill | 26 K / 761 |
 
 ### Per model
 
@@ -88,11 +88,11 @@ exports[`markdown report > snapshot: fixtures/basic.jsonl 1`] = `
 
 | Category | Share | Cost |
 |---|---:|---:|
-| Cache writes (premium) | 70% | $1.16 |
-| System prompt & overhead | 22% | $0.37 |
-| Model generation (output tokens) | 8% | $0.13 |
-| Tool results fed back | 0% | $0.00 |
-| File reads (Read tool) | 0% | $0.00 |
+| Caching the context | 70% | $1.16 |
+| Re-sending the conversation | 22% | $0.37 |
+| Writing replies & code | 8% | $0.13 |
+| Command & tool output | 0% | $0.00 |
+| Files it read | 0% | $0.00 |
 
 ### Cache efficiency
 
@@ -111,8 +111,8 @@ Potential savings: ≈ **$0.47**
 
 | Cost | Time | What happened | In / Out |
 |---:|---|---|---:|
-| $1.39 | 07:44 | Write ×2 + Read + Edit, +1 more tools | 50 K / 2 K |
-| $0.27 | 07:41 | Bash + Skill | 26 K / 761 |
+| $1.39 | 07:44 | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" · Write ×2 + Read + Edit, +1 more tools | 50 K / 2 K |
+| $0.27 | 07:41 | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" · Bash + Skill | 26 K / 761 |
 
 ### Per model
 
@@ -133,12 +133,12 @@ exports[`markdown report > snapshot: fixtures/compaction.jsonl 1`] = `
 
 | Category | Share | Cost |
 |---|---:|---:|
-| Cache writes (premium) | 39% | $0.10 |
-| System prompt & overhead | 24% | $0.06 |
-| Context compaction | 23% | $0.06 |
-| Model generation (output tokens) | 14% | $0.03 |
-| File reads (Read tool) | 0% | $0.00 |
-| Tool results fed back | 0% | $0.00 |
+| Caching the context | 39% | $0.10 |
+| Re-sending the conversation | 24% | $0.06 |
+| Summarizing long chats | 23% | $0.06 |
+| Writing replies & code | 14% | $0.03 |
+| Files it read | 0% | $0.00 |
+| Command & tool output | 0% | $0.00 |
 
 - Context compacted at 14:05: cost $0.06, dropped ~172 K tokens of history
 
@@ -159,7 +159,7 @@ Potential savings: ≈ **$0.06**
 
 | Cost | Time | What happened | In / Out |
 |---:|---|---|---:|
-| $0.25 | 14:00 | Read, context compacted | 189 K / 2 K |
+| $0.25 | 14:00 | "do a big task please with lots of context" · Read, context compacted | 189 K / 2 K |
 
 ### Per model
 
@@ -180,12 +180,12 @@ exports[`markdown report > snapshot: fixtures/server-tools.jsonl 1`] = `
 
 | Category | Share | Cost |
 |---|---:|---:|
-| Server tools (web search) | 95% | $0.04 |
-| Model generation (output tokens) | 5% | $0.00 |
-| System prompt & overhead | 0% | $0.00 |
-| Tool results fed back | 0% | $0.00 |
-| File reads (Read tool) | 0% | $0.00 |
-| Cache writes (premium) | 0% | $0.00 |
+| Web searches | 95% | $0.04 |
+| Writing replies & code | 5% | $0.00 |
+| Re-sending the conversation | 0% | $0.00 |
+| Command & tool output | 0% | $0.00 |
+| Files it read | 0% | $0.00 |
+| Caching the context | 0% | $0.00 |
 
 ### Cache efficiency
 

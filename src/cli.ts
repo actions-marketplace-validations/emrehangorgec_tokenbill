@@ -8,7 +8,16 @@ import { attribute } from "./attribute.js";
 import { analyzeCache } from "./cost/cache.js";
 import { calculate } from "./cost/calculator.js";
 import { overridePricing, overrideServerToolPricing } from "./cost/pricing.js";
-import { allProjectSessionFiles, claudeProjectsRoot, encodeProjectPath, resolveProjectLogDir } from "./project-dir.js";
+import {
+  allProjectSessionFiles,
+  claudeProjectsRoot,
+  encodeProjectPath,
+  projectName,
+  resolveProjectLogDir,
+} from "./project-dir.js";
+import { svgToPng } from "./card-png.js";
+import { setShowPrompts } from "./privacy.js";
+import { cardCaption, cardData, PLANS, renderCardSvg, type PlanInfo } from "./report/card.js";
 import { renderAggregateHtml, renderHtml } from "./report/html.js";
 import { renderAggregateJson, renderJson } from "./report/json.js";
 import { renderAggregateMarkdown, renderMarkdown } from "./report/markdown.js";
@@ -18,6 +27,7 @@ import { runStatusline } from "./statusline.js";
 import { topTurns } from "./turns.js";
 
 const HELP = `Usage: tokenbill [options] [session-file.jsonl | project-dir]
+       tokenbill card [options] [project-dir]   (shareable PNG of where the money went)
        tokenbill statusline   (Claude Code statusLine command, reads JSON on stdin)
 
 With no path argument, analyzes every session in the Claude Code project
@@ -39,8 +49,14 @@ Options:
   --top <n>         number of expensive turns to show (default 10)
   --budget <usd>    exit 2 if the reported total exceeds this amount (for CI)
   --pricing <file>  JSON file overriding the built-in price table
+  --redact          hide your prompt text (turns show tool activity instead)
   --no-color        disable colored output (NO_COLOR env also respected)
   -h, --help        show this help
+
+Card options:
+  --plan <plan>     pro, max5, max20 or a monthly USD amount: adds the
+                    "N× my plan" figure (last 30 days unless --since is set)
+  --out <file>      output path, .png or .svg (default: tokenbill-card.png)
 
 Exit codes: 0 ok, 1 error, 2 budget exceeded.`;
 
@@ -146,7 +162,8 @@ if (process.argv[2] === "statusline") {
 }
 
 // --- arg parsing -----------------------------------------------------------
-const argv = process.argv.slice(2);
+const card = process.argv[2] === "card";
+const argv = process.argv.slice(card ? 3 : 2);
 let json = false;
 let all = false;
 let html: string | undefined;
@@ -155,6 +172,8 @@ let top = 10;
 let budget: number | undefined;
 let target: string | undefined;
 let since: string | undefined;
+let planArg: string | undefined;
+let cardOut = path.resolve("tokenbill-card.png");
 
 /**
  * --pricing accepts either the bare model array (original format) or an object
@@ -203,6 +222,21 @@ for (let i = 0; i < argv.length; i++) {
       argv[i + 1] && argv[i + 1].endsWith(".html") ? path.resolve(argv[++i]) : path.resolve("tokenbill-report.html");
   } else if (a === "--md") {
     md = argv[i + 1] && argv[i + 1].endsWith(".md") ? path.resolve(argv[++i]) : true;
+  } else if (a === "--redact") {
+    setShowPrompts(false);
+  } else if (card && a === "--plan") {
+    planArg = argv[++i];
+    if (!planArg || !(planArg in PLANS || Number(planArg) > 0)) {
+      console.error("--plan expects pro, max5, max20 or a monthly USD amount");
+      process.exit(1);
+    }
+  } else if (card && a === "--out") {
+    const out = argv[++i];
+    if (!out || !/\.(png|svg)$/i.test(out)) {
+      console.error("--out expects a .png or .svg file path");
+      process.exit(1);
+    }
+    cardOut = path.resolve(out);
   } else if (a === "--no-color") {
     setColorEnabled(false);
   } else if (a === "--top") {
@@ -252,6 +286,49 @@ function maskLabel(label: string): string {
   return masked;
 }
 
+if (card && (json || html || md || budget !== undefined)) {
+  console.error("card cannot be combined with --json, --html, --md or --budget");
+  process.exit(1);
+}
+
+/**
+ * The plan fee over the card's window. Without --since the card covers the
+ * last 30 days and compares against one month's fee.
+ */
+function resolvePlan(): PlanInfo | undefined {
+  if (!planArg) return undefined;
+  const known = PLANS[planArg];
+  const monthly = known ? known.monthlyUSD : Number(planArg);
+  const name = known ? known.name : `$${monthly}/mo`;
+  if (!since || planWindowDefault) return { name, feeUSD: monthly };
+  const days = Math.max(1, Math.ceil((Date.now() - Date.parse(`${since}T00:00:00.000Z`)) / 864e5));
+  return { name, feeUSD: (monthly * days) / 30 };
+}
+const planWindowDefault = card && !!planArg && !since;
+if (planWindowDefault) {
+  since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+}
+
+function writeCard(result: ReturnType<typeof aggregate>, project: string): void {
+  const data = cardData(result, project, resolvePlan());
+  const svg = renderCardSvg(data);
+  let out = cardOut;
+  if (out.toLowerCase().endsWith(".png")) {
+    const png = svgToPng(svg);
+    if (png) {
+      fs.writeFileSync(out, png);
+    } else {
+      out = out.replace(/\.png$/i, ".svg");
+      fs.writeFileSync(out, svg);
+      console.error("PNG renderer unavailable on this platform - wrote SVG instead.");
+    }
+  } else {
+    fs.writeFileSync(out, svg);
+  }
+  console.error(`Wrote ${out}\n`);
+  console.log(cardCaption(data));
+}
+
 if ([json, html, md].filter(Boolean).length > 1) {
   console.error("--json, --html and --md are mutually exclusive");
   process.exit(1);
@@ -290,7 +367,9 @@ try {
     const turns = topTurns(session, top);
     const cache = analyzeCache(session);
     totalUSD = cost.totalUSD;
-    if (html) {
+    if (card) {
+      writeCard(aggregate([session], top), projectName([session.cwd]) ?? session.sessionId.slice(0, 8));
+    } else if (html) {
       fs.writeFileSync(html, renderHtml(session, cost, attr, turns, cache));
       console.error(`Wrote ${html}`);
     } else if (md) {
@@ -306,9 +385,13 @@ try {
     const sessions = resolved.files.map((f) => claudeCodeAdapter.parse(f)).filter(matchesSince);
     if (since && sessions.length === 0) throw noMatches();
     const result = aggregate(sessions, top);
-    const label = maskLabel(resolved.label);
+    const label = all
+      ? resolved.label
+      : (projectName(sessions.map((s) => s.cwd)) ?? maskLabel(resolved.label));
     totalUSD = result.totalUSD;
-    if (html) {
+    if (card) {
+      writeCard(result, all ? "all my projects" : label);
+    } else if (html) {
       fs.writeFileSync(html, renderAggregateHtml(result, label));
       console.error(`Wrote ${html}`);
     } else if (md) {

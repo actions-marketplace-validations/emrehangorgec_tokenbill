@@ -43,7 +43,8 @@ runs:
       shell: bash
       env:
         TB_PATH: ${{ inputs.path }}
-      run: $TB_CMD "$TB_PATH" --md >> "$GITHUB_STEP_SUMMARY"
+      # Job summaries can be public; keep prompt text out of them.
+      run: $TB_CMD "$TB_PATH" --md --redact >> "$GITHUB_STEP_SUMMARY"
     - name: Budget guard
       if: inputs.budget != ''
       shell: bash

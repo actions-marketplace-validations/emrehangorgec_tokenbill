@@ -3,6 +3,8 @@
  * requests, dark theme matching the terminal palette. The output is meant to
  * be opened locally or shared as one self-contained file.
  */
+import { categoryRows } from "../categories.js";
+import { turnPrompt } from "../privacy.js";
 import type { NormalizedSession } from "../adapters/types.js";
 import type { AggregateResult } from "../aggregate.js";
 import type { Attribution } from "../attribute.js";
@@ -78,26 +80,16 @@ interface CategoryLike {
 }
 
 function categorySection(cat: CategoryLike, totalUSD: number): string {
-  const rows: [string, number, string][] = [
-    ["Model generation (output tokens)", cat.generationUSD, C.generation],
-    ["Tool results fed back", cat.toolResultsUSD, C.toolResults],
-    ["File reads (Read tool)", cat.fileReadsUSD, C.fileReads],
-    ["System prompt & overhead", cat.overheadUSD, C.overhead],
-    ["Cache writes (premium)", cat.cacheWritesUSD, C.cacheWrites],
-  ];
-  if (cat.compactionUSD > 0) rows.push(["Context compaction", cat.compactionUSD, C.compaction]);
-  if (cat.serverToolsUSD > 0)
-    rows.push(["Server tools (web search)", cat.serverToolsUSD, C.serverTools]);
-  rows.sort((a, b) => b[1] - a[1]);
-  const body = rows
-    .map(([label, amount, color]) => {
-      const p = totalUSD > 0 ? (amount / totalUSD) * 100 : 0;
+  const body = categoryRows(cat)
+    .map(({ key, label, hint, amountUSD }) => {
+      const color = C[key];
+      const p = totalUSD > 0 ? (amountUSD / totalUSD) * 100 : 0;
       return (
-        `<div class="catrow">` +
-        `<span class="catlabel" style="color:${color}">${esc(label)}</span>` +
+        `<div class="catrow" title="${esc(hint)}">` +
+        `<span class="catlabel" style="color:${color}">${esc(label)}<small>${esc(hint)}</small></span>` +
         `<span class="cattrack"><span class="catfill" style="width:${p.toFixed(1)}%;background:${color}"></span></span>` +
         `<span class="catpct">${p.toFixed(0)}%</span>` +
-        `<span class="catusd">${usd(amount)}</span></div>`
+        `<span class="catusd">${usd(amountUSD)}</span></div>`
       );
     })
     .join("");
@@ -173,6 +165,13 @@ function table(headers: [string, "num" | "str"][], rows: string[][], sortable: b
   return `<table${sortable ? ` class="sortable"` : ""}><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
 }
 
+function turnCell(t: Turn): string {
+  const p = turnPrompt(t);
+  return p
+    ? `<span class="prompt">${esc(p)}</span><br><span class="dim">${esc(t.description)}</span>`
+    : esc(t.description);
+}
+
 function turnsSection(turns: (Turn & { sessionId?: string })[], aggregate: boolean): string {
   if (turns.length === 0) return "";
   const headers: [string, "num" | "str"][] = aggregate
@@ -183,7 +182,7 @@ function turnsSection(turns: (Turn & { sessionId?: string })[], aggregate: boole
       `<b data-v="${t.costUSD}">${usd(t.costUSD)}</b>`,
       ...(aggregate ? [`<span class="dim">${esc((t.sessionId ?? "").slice(0, 8))}</span>`] : []),
       hhmm(t.startTime),
-      esc(t.description),
+      turnCell(t),
       `<span class="dim" data-v="${Math.round(t.inputGrowthTokens)}">${tok(t.inputGrowthTokens)}</span>`,
       `<span class="dim" data-v="${t.outputTokens}">${tok(t.outputTokens)}</span>`,
     ];
@@ -238,6 +237,8 @@ function page(subtitle: string, totalUSD: number, sections: string[]): string {
   section{background:${C.panel};border:1px solid ${C.border};border-radius:8px;padding:16px 18px;margin-top:16px}
   .catrow{display:flex;align-items:center;gap:10px;margin:5px 0}
   .catlabel{flex:0 0 260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .catlabel small{display:block;font-size:11px;color:${C.dim};overflow:hidden;text-overflow:ellipsis}
+  .prompt{color:${C.fg}}
   .cattrack{flex:1;height:12px;background:${C.border};border-radius:6px;overflow:hidden}
   .catfill{display:block;height:100%}
   .catpct{flex:0 0 42px;text-align:right;color:${C.dim}}
