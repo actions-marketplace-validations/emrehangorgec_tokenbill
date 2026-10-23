@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- With `--redact`, the share card leads with its costliest finding and the
+  change that helps, instead of a list of tool calls.
+- The card's plan comparison says how many days of use it covers when that
+  is less than the month.
+- The card's day strip is labeled with the day it ends on instead of
+  "last 30 days".
+- Long card labels are cut at a word boundary.
+- `tokenbill card` suggests `--plan` when it was not given, and the caption
+  includes the costliest finding.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added

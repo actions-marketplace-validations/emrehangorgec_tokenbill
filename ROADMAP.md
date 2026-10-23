@@ -40,30 +40,29 @@ share.
 - `--plan` compares spend against a Claude subscription's price.
 - A ready-to-paste caption for posting.
 
-## Phase 3: Release 0.7.0
-
-Phases 1 and 2 are on `main` but not on npm, while the README already
-documents `npx tokenbill card`. Nothing gets promoted until they ship.
+## Phase 3: Release 0.7.0 (done)
 
 - CI installs the packed tarball into an empty project on Windows, macOS and
-  Linux and renders a card from it with the bundled fonts.
-- Publish 0.7.0 to npm and move the Action tag in the README.
-- Repository topics and a social preview image, so links to the repo look
-  like the card.
+  Linux and renders a card from it; the three cards are byte identical, so
+  the bundled fonts are used everywhere.
+- 0.7.0 is on npm and the README points the Action at it.
+- Still open: repository topics and a social preview image, so links to the
+  repo look like the card.
 
-## Phase 4: A card worth posting
+## Phase 4: A card worth posting (implemented, ships in the next release)
 
 People share their own number, not a tool. The card has to say something a
 stranger understands at a glance, even with `--redact`.
 
-- With `--redact`, the priciest turn box shows the largest finding in one
-  sentence (for example "13 compactions cost $31") instead of a list of tool
-  calls cut off mid-word.
-- The plan comparison only uses days that have data, or says how many days it
-  covers, so "1.6× my plan" from two days of use is never read as a month.
-- The day strip matches the window the card actually covers.
-- The caption suggests `--plan` when it was not given, and always ends with
-  the command that made the card.
+- With `--redact`, the left panel shows the costliest finding and the change
+  that helps ("13 compactions cost $31.56 → start a fresh session per task")
+  instead of a list of tool calls.
+- Against a whole month's fee, the plan comparison says how many days of use
+  it covers ("1.6× my Max 5x plan's price ($100) in 2 days").
+- The day strip is labeled with the day it ends on.
+- Long labels are cut at a word boundary.
+- `tokenbill card` suggests `--plan` when it was not given; the caption
+  includes the costliest finding and ends with the command that made the card.
 
 ## Phase 5: Small launch
 
