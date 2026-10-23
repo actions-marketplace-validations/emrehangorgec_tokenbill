@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-23
+
 ### Changed
 - With `--redact`, the share card leads with its costliest finding and the
   change that helps, instead of a list of tool calls.
