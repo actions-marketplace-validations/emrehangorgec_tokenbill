@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-23
+
 ### Added
 - `tokenbill card`: a share image of a project's spend (1200×630 layout, PNG
   rendered at 2×), made locally without a browser, with a ready-to-paste caption and an optional
@@ -13,8 +15,12 @@ All notable changes to this project are documented here. The format follows
 - Expensive turns are labeled with the prompt that started them.
 - `--redact` hides prompt text in every report; the GitHub Action uses it for
   job summaries.
+- `--all`: one report across every project under `~/.claude/projects`.
+- `--since <date>`: include only sessions starting on or after a date.
 - README now opens with a share card generated from a real project with
   prompts hidden.
+- CI installs the packed tarball into an empty project on Linux, Windows and
+  macOS and renders a card from it.
 
 ### Changed
 - Cost categories use plain-language names, and the terminal report explains
@@ -25,6 +31,11 @@ All notable changes to this project are documented here. The format follows
   `mcp__server__tool` identifier.
 - `@resvg/resvg-js` added as an optional dependency, and the published package
   now includes the card fonts.
+- Price table refreshed from the upstream feed.
+
+### Fixed
+- The weekly pricing workflow opens a new pull request after the previous one
+  was merged.
 
 ## [0.6.0] - 2026-10-10
 

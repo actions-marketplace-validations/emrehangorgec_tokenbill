@@ -134,7 +134,7 @@ repo or download as an artifact. The bundled action writes the Markdown report
 to the job summary and applies the guard:
 
 ```yaml
-- uses: emrehangorgec/tokenbill@v0.6.0
+- uses: emrehangorgec/tokenbill@v0.7.0
   with:
     path: .agent-logs          # a Claude Code log dir or a single .jsonl
     budget: 25                 # optional: fail the job above $25
