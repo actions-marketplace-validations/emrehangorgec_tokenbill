@@ -141,7 +141,7 @@ The README card ([`assets/card.png`](assets/card.png)) is generated from a real
 project with prompts hidden. Regenerate it with `--redact`, always:
 
 ```
-npx tsx src/cli.ts card <project-dir> --redact --plan max5 --since <first-session-date> --out assets/card.png
+npx tsx src/cli.ts card <project-dir> --redact --plan pro --since <first-session-date> --out assets/card.png
 ```
 
 ## Test fixtures

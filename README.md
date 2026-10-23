@@ -89,7 +89,7 @@ reads). That figure is a heuristic estimate, not money proven lost: some
 compactions are unavoidable on long tasks. It also prints a ready-to-paste
 caption.
 The card at the top of this page was made with
-`tokenbill card --redact --plan max5 --since 2026-09-24` on a real project.
+`tokenbill card --redact --plan pro --since 2026-09-24` on a real project.
 
 `--plan` takes `pro`, `max5`, `max20` or a monthly dollar amount. Without
 `--since` the card covers the last 30 days and compares against one month's
