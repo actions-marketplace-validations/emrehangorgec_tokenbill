@@ -6,7 +6,10 @@
 import type { Categories } from "./attribute.js";
 import type { CacheAnalysis } from "./cost/cache.js";
 
+export type FindingKind = "cacheBreaks" | "fileReads" | "compaction" | "lowHitRate" | "healthyCache";
+
 export interface Finding {
+  kind: FindingKind;
   severity: "warn" | "ok";
   /** one line, includes the dollar impact where applicable */
   title: string;
@@ -14,6 +17,8 @@ export interface Finding {
   detail?: string;
   /** contribution to the "potential savings" total */
   savingsUSD?: number;
+  /** what the flagged pattern cost in total (can exceed savingsUSD) */
+  costUSD?: number;
 }
 
 export interface Advice {
@@ -45,11 +50,13 @@ export function advise(input: AdviseInput): Advice {
   if (cache.invalidations > 0 && cache.wastedUSD >= MIN_MATERIAL_USD) {
     const n = cache.invalidations;
     findings.push({
+      kind: "cacheBreaks",
       severity: "warn",
       title: `${n} cache prefix break${n > 1 ? "s" : ""} cost you ≈ ${usd(cache.wastedUSD)}`,
       detail:
         "usually mid-session config or system prompt changes; keep the prompt prefix stable",
       savingsUSD: cache.wastedUSD,
+      costUSD: cache.wastedUSD,
     });
   }
 
@@ -57,10 +64,12 @@ export function advise(input: AdviseInput): Advice {
   if (fileReadShare >= FILE_READ_SHARE_THRESHOLD && categories.fileReadsUSD >= MIN_MATERIAL_USD) {
     const upTo = categories.fileReadsUSD * 0.25;
     findings.push({
+      kind: "fileReads",
       severity: "warn",
       title: `${Math.round(fileReadShare * 100)}% of spend is file reads (≈ ${usd(categories.fileReadsUSD)})`,
       detail: "prefer targeted reads (offset/limit, grep) over re-reading whole files",
       savingsUSD: upTo,
+      costUSD: categories.fileReadsUSD,
     });
   }
 
@@ -68,22 +77,26 @@ export function advise(input: AdviseInput): Advice {
   if (compactionShare >= COMPACTION_SHARE_THRESHOLD && categories.compactionUSD >= MIN_MATERIAL_USD) {
     const n = compactionEventCount;
     findings.push({
+      kind: "compaction",
       severity: "warn",
       title: `context compaction cost ≈ ${usd(categories.compactionUSD)} (${n} event${n === 1 ? "" : "s"})`,
       detail: "long sessions pay to re-summarize their own history; start fresh sessions per task",
       savingsUSD: categories.compactionUSD,
+      costUSD: categories.compactionUSD,
     });
   }
 
   const inputTokens = cache.tokens.read + cache.tokens.write + cache.tokens.uncached;
   if (cache.hitRate < LOW_HIT_RATE && inputTokens > 0 && totalUSD >= MIN_MATERIAL_USD) {
     findings.push({
+      kind: "lowHitRate",
       severity: "warn",
       title: `cache hit rate is only ${Math.round(cache.hitRate * 100)}%`,
       detail: "many short one-shot sessions re-pay the system prompt; batch related work together",
     });
   } else if (cache.hitRate >= HEALTHY_HIT_RATE && inputTokens > 0) {
     findings.push({
+      kind: "healthyCache",
       severity: "ok",
       title: `cache hit rate ${Math.round(cache.hitRate * 100)}% - healthy`,
     });

@@ -7,7 +7,11 @@ import { cardCaption, cardData, renderCardSvg } from "../src/report/card.js";
 
 afterEach(() => setShowPrompts(true));
 
-function data(plan?: { name: string; feeUSD: number }) {
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function data(plan?: { name: string; feeUSD: number; windowDays: number }) {
   const sessions = ["fixtures/basic.jsonl", "fixtures/compaction.jsonl"].map((f) =>
     claudeCodeAdapter.parse(f),
   );
@@ -44,12 +48,59 @@ describe("share card", () => {
     expect(d.topMoment?.quoted).toBe(false);
   });
 
+  it("redacted cards lead with the costliest finding and its fix", () => {
+    setShowPrompts(false);
+    const d = data();
+    expect(d.topFinding).toBeDefined();
+    const svg = renderCardSvg(d);
+    expect(svg).toContain("TOP FINDING");
+    expect(svg).not.toContain("PRICIEST TURN");
+    expect(svg).toContain(esc(d.topFinding!.title));
+    expect(svg).toContain(`→ ${d.topFinding!.fix}`);
+    expect(cardCaption(d)).toContain(d.topFinding!.title.slice(1));
+  });
+
+  it("keeps the quoted prompt when prompts are shown", () => {
+    const svg = renderCardSvg(data());
+    expect(svg).toContain("PRICIEST PROMPT");
+    expect(svg).not.toContain("TOP FINDING");
+  });
+
+  it("cuts long labels at a word boundary", () => {
+    setShowPrompts(false);
+    const base = data();
+    const d = {
+      ...base,
+      topFinding: undefined,
+      topMoment: { costUSD: 1, label: "Bash ×30 + Write ×11 + Read ×6 + Edit ×4, +1 more tool and then some", quoted: false },
+    };
+    const svg = renderCardSvg(d);
+    expect(svg).toContain(">Bash ×30 + Write ×11 + Read ×6 + Edit ×4…<");
+  });
+
   it("states the plan as a multiple or a share of its price", () => {
-    const big = data({ name: "Pro", feeUSD: 0.01 });
+    const big = data({ name: "Pro", feeUSD: 0.01, windowDays: 30 });
     expect(renderCardSvg(big)).toMatch(/\d+\.\d×/);
     expect(cardCaption(big)).toContain("× what my Pro plan costs");
-    const small = data({ name: "Max 20x", feeUSD: 1e6 });
+    const small = data({ name: "Max 20x", feeUSD: 1e6, windowDays: 30 });
     expect(cardCaption(small)).toContain("% of my Max 20x plan's price");
+  });
+
+  it("says how many days of use the plan comparison covers", () => {
+    const d = data({ name: "Pro", feeUSD: 20, windowDays: 30 });
+    expect(d.activeDays).toBeGreaterThan(0);
+    const shortWindow = { ...d, activeDays: 2 };
+    expect(renderCardSvg(shortWindow)).toContain("($20.00) in 2 days");
+    const fullWindow = { ...d, activeDays: 30 };
+    expect(renderCardSvg(fullWindow)).not.toMatch(/\) in \d+ days?/);
+    const prorated = { ...d, activeDays: 2, plan: { name: "Pro", feeUSD: 77, windowDays: 115 } };
+    expect(renderCardSvg(prorated)).not.toMatch(/\) in \d+ days?/);
+  });
+
+  it("labels the day strip with the day it ends on", () => {
+    const d = data();
+    expect(renderCardSvg(d)).not.toContain("last 30 days");
+    expect(renderCardSvg(d)).toMatch(/30 days to [A-Z][a-z]{2} \d{1,2}</);
   });
 
   it("rasterizes to PNG when the optional renderer is installed", () => {

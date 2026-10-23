@@ -300,9 +300,9 @@ function resolvePlan(): PlanInfo | undefined {
   const known = PLANS[planArg];
   const monthly = known ? known.monthlyUSD : Number(planArg);
   const name = known ? known.name : `$${monthly}/mo`;
-  if (!since || planWindowDefault) return { name, feeUSD: monthly };
+  if (!since || planWindowDefault) return { name, feeUSD: monthly, windowDays: 30 };
   const days = Math.max(1, Math.ceil((Date.now() - Date.parse(`${since}T00:00:00.000Z`)) / 864e5));
-  return { name, feeUSD: (monthly * days) / 30 };
+  return { name, feeUSD: (monthly * days) / 30, windowDays: days };
 }
 const planWindowDefault = card && !!planArg && !since;
 if (planWindowDefault) {
@@ -326,6 +326,9 @@ function writeCard(result: ReturnType<typeof aggregate>, project: string): void 
     fs.writeFileSync(out, svg);
   }
   console.error(`Wrote ${out}\n`);
+  if (!planArg) {
+    console.error("Tip: add --plan pro, max5 or max20 to compare against your subscription.\n");
+  }
   console.log(cardCaption(data));
 }
 
