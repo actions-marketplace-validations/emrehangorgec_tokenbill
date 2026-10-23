@@ -25,14 +25,14 @@ share.
 - **Solve our users' problem.** A feature is added because it helps people
   understand or reduce their spend, not because another tool has it.
 
-## Phase 1: Readable reports (implemented, awaiting pre-release verification)
+## Phase 1: Readable reports (done)
 
 - Expensive turns are labeled with the prompt that started them.
 - `--redact` hides prompt text everywhere; the Action uses it.
 - Plain-language category names, shared by every report.
 - Reports are titled with the project name, not the log path.
 
-## Phase 2: Share card (implemented, awaiting pre-release verification)
+## Phase 2: Share card (done)
 
 - `tokenbill card`: one image with the total, the spend spectrum, the priciest
   prompt and the estimated room to save.
@@ -40,23 +40,52 @@ share.
 - `--plan` compares spend against a Claude subscription's price.
 - A ready-to-paste caption for posting.
 
-Before release: install the packed tarball on a clean machine and check that
-the card renders with the bundled fonts on Windows, macOS and Linux.
+## Phase 3: Release 0.7.0 (done)
 
-## Phase 3: Small launch
+- CI installs the packed tarball into an empty project on Windows, macOS and
+  Linux and renders a card from it; the three cards are byte identical, so
+  the bundled fonts are used everywhere.
+- 0.7.0 is on npm and the README points the Action at it.
+- Repository topics are set. Still open: a social preview image, so links
+  to the repo look like the card.
 
-Ship what exists, learn from real users, then pick the next feature.
+## Phase 4: A card worth posting (done, 0.7.1)
 
-- README opens with a real card (generated with `--redact`).
-- Posts on r/ClaudeAI, r/ClaudeCode and Show HN, led by the card.
-- Collect feedback: which numbers people share, which they question, what
-  they ask for.
+People share their own number, not a tool. The card has to say something a
+stranger understands at a glance, even with `--redact`.
 
-## Phase 4: Chosen by feedback
+- With `--redact`, the left panel shows the costliest finding and the change
+  that helps ("13 compactions cost $31.56 → start a fresh session per task")
+  instead of a list of tool calls.
+- Against a whole month's fee, the plan comparison says how many days of use
+  it covers ("1.6× my Max 5x plan's price ($100) in 2 days").
+- The day strip is labeled with the day it ends on.
+- Long labels are cut at a word boundary.
+- `tokenbill card` suggests `--plan` when it was not given; the caption
+  includes the costliest finding and ends with the command that made the card.
+
+## Phase 5: Small launch
+
+- Lead with a finding, not the tool: "half of my bill was re-sending the
+  conversation, here is what changed it", with the card attached.
+- r/ClaudeAI and r/ClaudeCode first, Show HN on a different day, then curated
+  lists of Claude Code tools.
+- Every question that comes back becomes an issue; those issues order Phase 6.
+- Discussions are open, with a pinned "Show your bill" thread for cards,
+  and a few issues are labeled `good first issue`.
+- Baseline before launch: 11 stars, about 20 npm downloads a week.
+
+## Phase 6: Chosen by feedback
 
 Candidates, in the order we currently expect. Each needs its own design note
 before work starts.
 
+- **Codex adapter.** Roughly doubles who can use tokenbill, and a Claude Code
+  vs Codex comparison is itself something people share. Needs log discovery,
+  adapter selection in the CLI and OpenAI model prices (see
+  [CONTRIBUTING](CONTRIBUTING.md#adding-an-adapter)).
+- **Claude Code plugin.** The status line and a `/tokenbill` command in one
+  install, inside the tool people already have open.
 - **Cost comment on pull requests.** Open questions to settle first:
   - How sessions are linked to a PR (branch, commit trailers, time window), so
     a project total is never shown as a PR cost.
@@ -65,8 +94,6 @@ before work starts.
   - How re-runs update a single comment instead of adding new ones.
   - Posting to GitHub is a network call: it stays opt-in, runs only in CI, and
     always uses `--redact`.
-- **Codex adapter.** Needs log discovery, adapter selection in the CLI and
-  OpenAI model prices (see [CONTRIBUTING](CONTRIBUTING.md#adding-an-adapter)).
 
 ## Later, if at all
 

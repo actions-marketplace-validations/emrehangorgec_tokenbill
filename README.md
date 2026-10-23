@@ -89,14 +89,16 @@ reads). That figure is a heuristic estimate, not money proven lost: some
 compactions are unavoidable on long tasks. It also prints a ready-to-paste
 caption.
 The card at the top of this page was made with
-`tokenbill card --redact --plan max5` on a real project.
+`tokenbill card --redact --plan max5 --since 2026-09-24` on a real project.
 
 `--plan` takes `pro`, `max5`, `max20` or a monthly dollar amount. Without
 `--since` the card covers the last 30 days and compares against one month's
-fee; with `--since` the fee is prorated to that window.
+fee; with `--since` the fee is prorated to that window. When your sessions
+cover fewer days than the month, the card says so ("in 2 days").
 
-The card quotes your priciest prompt. Add `--redact` to show the tool
-activity instead. Rendering happens locally with bundled open-source fonts
+The card quotes your priciest prompt. Add `--redact` to hide it: the card
+then leads with its costliest finding and the one change that helps
+("13 compactions cost $31.56 → start a fresh session per task"). Rendering happens locally with bundled open-source fonts
 (Space Grotesk, JetBrains Mono); no browser is needed. If the PNG renderer
 has no prebuilt binary for your platform, the card is written as SVG.
 
@@ -134,7 +136,7 @@ repo or download as an artifact. The bundled action writes the Markdown report
 to the job summary and applies the guard:
 
 ```yaml
-- uses: emrehangorgec/tokenbill@v0.6.0
+- uses: emrehangorgec/tokenbill@v0.7.1
   with:
     path: .agent-logs          # a Claude Code log dir or a single .jsonl
     budget: 25                 # optional: fail the job above $25

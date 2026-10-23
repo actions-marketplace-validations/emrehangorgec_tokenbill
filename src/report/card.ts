@@ -6,7 +6,7 @@
  *
  * Pure string rendering - rasterizing to PNG lives in card-png.ts.
  */
-import { advise } from "../advise.js";
+import { advise, type Finding } from "../advise.js";
 import type { AggregateResult } from "../aggregate.js";
 import { categoryRows, type CategoryKey } from "../categories.js";
 import { turnPrompt } from "../privacy.js";
@@ -26,6 +26,8 @@ export interface PlanInfo {
   name: string;
   /** what the plan cost over the card's window */
   feeUSD: number;
+  /** length of that window in days */
+  windowDays: number;
 }
 
 export interface CardData {
@@ -35,10 +37,14 @@ export interface CardData {
   totalUSD: number;
   segments: { key: CategoryKey; label: string; amountUSD: number }[];
   topMoment?: { costUSD: number; label: string; quoted: boolean };
+  /** the costliest flagged pattern, stated so a stranger understands it */
+  topFinding?: { title: string; fix: string; costUSD: number };
   /** the report's "potential savings" estimate, with the event counts behind it */
   savings: { estimateUSD: number; breaks: number; compactions: number };
   cacheHitRate: number;
   days: { date: string; costUSD: number }[];
+  /** calendar days from the first session to the last one */
+  activeDays: number;
   plan?: PlanInfo;
 }
 
@@ -80,10 +86,61 @@ function money(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-/** Cut text to roughly fit `width` px at `size` px (em-width estimate). */
+/**
+ * Cut text to roughly fit `width` px at `size` px (em-width estimate),
+ * at a word boundary when one is close enough.
+ */
 function fit(text: string, width: number, size: number, em = 0.56): string {
   const max = Math.floor(width / (size * em));
-  return text.length > max ? `${text.slice(0, Math.max(1, max - 1))}…` : text;
+  if (text.length <= max) return text;
+  let cut = text.slice(0, Math.max(1, max - 1));
+  const space = cut.lastIndexOf(" ");
+  if (space >= max / 2) cut = cut.slice(0, space);
+  return `${cut.replace(/[\s,;:+·-]+$/, "")}…`;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function calendarDays(oldest: string | undefined, newest: string | undefined): number {
+  const a = oldest ? new Date(oldest) : undefined;
+  const b = newest ? new Date(newest) : undefined;
+  if (!a || !b || isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
+  const day = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((day(b) - day(a)) / 864e5) + 1;
+}
+
+/** Card wording for an advisor finding: what it cost, and the one change that helps. */
+function describeFinding(
+  f: Finding,
+  totalUSD: number,
+  compactions: number,
+  breaks: number,
+): CardData["topFinding"] {
+  const cost = f.costUSD ?? 0;
+  switch (f.kind) {
+    case "compaction":
+      return {
+        title: `${plural(compactions, "compaction")} cost ${money(cost)}`,
+        fix: "start a fresh session per task",
+        costUSD: cost,
+      };
+    case "cacheBreaks":
+      return {
+        title: `${plural(breaks, "cache break")} cost ${money(cost)}`,
+        fix: "keep settings and prompts stable mid-session",
+        costUSD: cost,
+      };
+    case "fileReads":
+      return {
+        title: `file reads cost ${money(cost)} (${Math.round((cost / totalUSD) * 100)}%)`,
+        fix: "read ranges or grep instead of whole files",
+        costUSD: cost,
+      };
+    default:
+      return undefined;
+  }
 }
 
 function shortDate(ts: string | undefined): string | undefined {
@@ -102,6 +159,15 @@ export function cardData(result: AggregateResult, project: string, plan?: PlanIn
 
   const top = result.topTurns[0];
   const prompt = top ? turnPrompt(top) : undefined;
+  const advice = advise({
+    totalUSD: result.totalUSD,
+    categories: result.categories,
+    cache: result.cache,
+    compactionEventCount: result.compactionEventCount,
+  });
+  const costliest = advice.findings
+    .filter((f) => f.severity === "warn" && (f.costUSD ?? 0) > 0)
+    .sort((x, y) => (y.costUSD ?? 0) - (x.costUSD ?? 0))[0];
   return {
     project,
     periodLabel,
@@ -113,20 +179,19 @@ export function cardData(result: AggregateResult, project: string, plan?: PlanIn
     topMoment: top
       ? { costUSD: top.costUSD, label: prompt ?? top.description, quoted: !!prompt }
       : undefined,
+    topFinding: costliest
+      ? describeFinding(costliest, result.totalUSD, result.compactionEventCount, result.cache.invalidations)
+      : undefined,
     // Same number the terminal report calls "potential savings", so the card
     // never claims more than the recommendations it summarizes.
     savings: {
-      estimateUSD: advise({
-        totalUSD: result.totalUSD,
-        categories: result.categories,
-        cache: result.cache,
-        compactionEventCount: result.compactionEventCount,
-      }).potentialSavingsUSD,
+      estimateUSD: advice.potentialSavingsUSD,
       breaks: result.cache.invalidations,
       compactions: result.compactionEventCount,
     },
     cacheHitRate: result.cache.hitRate,
     days: dailyTrend(result.sessions, 30).map((d) => ({ date: d.date, costUSD: d.costUSD })),
+    activeDays: calendarDays(oldest, newest),
     plan,
   };
 }
@@ -179,10 +244,17 @@ function hero(d: CardData): string {
     const mult = d.totalUSD / d.plan.feeUSD;
     const big = mult >= 1 ? `${mult.toFixed(1)}×` : `${Math.round(mult * 100)}%`;
     const sub = mult >= 1 ? `my ${d.plan.name} plan's price` : `of my ${d.plan.name} plan's price`;
+    // Two days of use against a month's fee is a different claim than thirty.
+    // Only said against a whole month's fee: next to a prorated fee it would
+    // read as the fee for those days.
+    const span =
+      d.plan.windowDays === 30 && d.activeDays > 0 && d.activeDays < 30
+        ? ` in ${plural(d.activeDays, "day")}`
+        : "";
     out +=
       `<text x="${x}" y="214" font-family="${FONT_SANS}" font-weight="700" font-size="56" fill="${K.accent}">${big}</text>` +
       `<text x="${x}" y="250" font-family="${FONT_SANS}" font-weight="500" font-size="20" fill="${K.dim}">` +
-      `${esc(`${sub} (${money(d.plan.feeUSD)})`)}</text>`;
+      `${esc(`${sub} (${money(d.plan.feeUSD)})${span}`)}</text>`;
   } else {
     out +=
       `<text x="${x}" y="214" font-family="${FONT_SANS}" font-weight="700" font-size="44" fill="${K.brand}">${Math.round(d.cacheHitRate * 100)}%</text>` +
@@ -240,7 +312,19 @@ function panel(x: number, w: number, title: string, color: string, body: string)
 
 function moments(d: CardData): string {
   let left = "";
-  if (d.topMoment) {
+  if (d.topFinding && !d.topMoment?.quoted) {
+    // Without a prompt to quote, a tool list says nothing to a stranger;
+    // the costliest pattern and its fix do.
+    const f = d.topFinding;
+    left = panel(
+      64,
+      628,
+      "TOP FINDING",
+      K.brand,
+      `<text x="88" y="514" font-family="${FONT_SANS}" font-weight="500" font-size="24" fill="${K.fg}">${esc(fit(f.title, 590, 24, 0.5))}</text>` +
+        `<text x="88" y="548" font-family="${FONT_MONO}" font-size="18" fill="${K.dim}">${esc(`→ ${fit(f.fix, 560, 18, 0.6)}`)}</text>`,
+    );
+  } else if (d.topMoment) {
     const m = d.topMoment;
     const text = m.quoted ? `“${fit(m.label, 590, 24, 0.5)}”` : fit(m.label, 590, 22, 0.6);
     left = panel(
@@ -269,6 +353,15 @@ function moments(d: CardData): string {
   return left + right;
 }
 
+/** The strip ends on the last session's day, which is not always today. */
+function stripLabel(d: CardData): string {
+  const end = d.days[d.days.length - 1]?.date;
+  if (!end) return "daily spend";
+  const [y, m, day] = end.split("-").map(Number);
+  const label = new Date(y, m - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${d.days.length} days to ${label}`;
+}
+
 /** 30 small day cells along the bottom: a quiet activity strip. */
 function strip(d: CardData): string {
   const max = Math.max(...d.days.map((x) => x.costUSD), 0);
@@ -280,7 +373,7 @@ function strip(d: CardData): string {
   });
   return (
     cells.join("") +
-    `<text x="490" y="600" font-family="${FONT_MONO}" font-size="13" fill="${K.dim}">last 30 days</text>` +
+    `<text x="490" y="600" font-family="${FONT_MONO}" font-size="13" fill="${K.dim}">${esc(stripLabel(d))}</text>` +
     `<text x="1136" y="601" text-anchor="end" font-family="${FONT_MONO}" font-size="16" fill="${K.dim}">npx tokenbill card</text>`
   );
 }
@@ -316,6 +409,7 @@ export function cardCaption(d: CardData): string {
     );
   }
   if (lead) parts.push(`${share}% of it was ${lead.label.toLowerCase()}.`);
+  if (d.topFinding) parts.push(`${d.topFinding.title[0].toUpperCase()}${d.topFinding.title.slice(1)}.`);
   parts.push("Itemize yours: npx tokenbill card");
   return parts.join(" ");
 }
