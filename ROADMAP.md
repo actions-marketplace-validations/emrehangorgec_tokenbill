@@ -46,10 +46,10 @@ share.
   Linux and renders a card from it; the three cards are byte identical, so
   the bundled fonts are used everywhere.
 - 0.7.0 is on npm and the README points the Action at it.
-- Still open: repository topics and a social preview image, so links to the
-  repo look like the card.
+- Repository topics are set. Still open: a social preview image, so links
+  to the repo look like the card.
 
-## Phase 4: A card worth posting (implemented, ships in the next release)
+## Phase 4: A card worth posting (done, 0.7.1)
 
 People share their own number, not a tool. The card has to say something a
 stranger understands at a glance, even with `--redact`.
@@ -71,6 +71,8 @@ stranger understands at a glance, even with `--redact`.
 - r/ClaudeAI and r/ClaudeCode first, Show HN on a different day, then curated
   lists of Claude Code tools.
 - Every question that comes back becomes an issue; those issues order Phase 6.
+- Discussions are open, with a pinned "Show your bill" thread for cards,
+  and a few issues are labeled `good first issue`.
 - Baseline before launch: 11 stars, about 20 npm downloads a week.
 
 ## Phase 6: Chosen by feedback
