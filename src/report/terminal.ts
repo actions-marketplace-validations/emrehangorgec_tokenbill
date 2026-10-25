@@ -6,7 +6,7 @@ import type { CostBreakdown } from "../cost/calculator.js";
 import type { Turn } from "../turns.js";
 import { advise, type Advice } from "../advise.js";
 import { categoryRows } from "../categories.js";
-import { turnLabel } from "../privacy.js";
+import { subagentLabel, turnLabel } from "../privacy.js";
 import { pricingLabel } from "../cost/pricing.js";
 import { dailyTrend } from "../trends.js";
 import { bold, dim, paint, palette } from "./theme.js";
@@ -79,6 +79,23 @@ function turnLines(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[] {
         dim(`(${tok(t.inputGrowthTokens)} in / ${tok(t.outputTokens)} out)`),
     );
   }
+  lines.push(dim(`  ${RULE}`));
+  return lines;
+}
+
+/** Costliest subagent runs across sessions, so a big bill points at the run behind it. */
+function subagentLines(result: AggregateResult, limit = 10): string[] {
+  if (result.subagentUSD <= 0) return [];
+  const n = result.subagents.length;
+  const lines = [
+    ``,
+    `  ${bold("Sub-agents")} ${dim(`${usd(result.subagentUSD)} of the total · ${n} run${n === 1 ? "" : "s"}`)}`,
+    dim(`  ${RULE}`),
+  ];
+  for (const s of result.subagents.slice(0, limit)) {
+    lines.push(`  ${bold(usd(s.costUSD).padStart(7))}  ${dim(`${s.sessionId.slice(0, 8)}  `)}${subagentLabel(s)}`);
+  }
+  if (n > limit) lines.push(dim(`  … ${n - limit} more`));
   lines.push(dim(`  ${RULE}`));
   return lines;
 }
@@ -296,6 +313,7 @@ export function renderAggregateReport(
   lines.push(...trendLines(dailyTrend(result.sessions)));
 
   lines.push(...turnLines(result.topTurns, (t) => (t as AggregateTurn).sessionId.slice(0, 8)));
+  lines.push(...subagentLines(result));
 
   lines.push("");
   lines.push(`  ${bold("Per model")}`);

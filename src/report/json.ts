@@ -1,4 +1,4 @@
-import { turnPrompt } from "../privacy.js";
+import { subagentTask, turnPrompt } from "../privacy.js";
 import type { NormalizedSession } from "../adapters/types.js";
 import type { AggregateResult } from "../aggregate.js";
 import type { Attribution } from "../attribute.js";
@@ -141,6 +141,14 @@ export function renderAggregateJson(result: AggregateResult, projectLabel: strin
         outputTokens: t.outputTokens,
         inputGrowthTokens: Math.round(t.inputGrowthTokens),
         hasCompaction: t.hasCompaction,
+      })),
+      subagentUSD: round(result.subagentUSD),
+      subagents: result.subagents.map((s) => ({
+        id: s.id,
+        sessionId: s.sessionId,
+        costUSD: round(s.costUSD),
+        requests: s.requests,
+        task: subagentTask(s),
       })),
     },
     null,

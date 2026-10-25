@@ -21,6 +21,8 @@ export interface CostBreakdown {
   tokens: TokenTotals;
   serverToolUse: { webSearch: number; webFetch: number; costUSD: number };
   subagentUSD: number;
+  /** cost per subagent log, largest first */
+  perSubagent: { id: string; costUSD: number; requests: number }[];
   requestCount: number;
 }
 
@@ -73,11 +75,21 @@ export function calculate(session: NormalizedSession): CostBreakdown {
   const serverToolUse = { webSearch: 0, webFetch: 0, costUSD: 0 };
   let totalUSD = 0;
   let subagentUSD = 0;
+  const perSubagent = new Map<string, { id: string; costUSD: number; requests: number }>();
 
   for (const req of session.requests) {
     const cost = requestCostUSD(req);
     totalUSD += cost;
-    if (req.subagent) subagentUSD += cost;
+    if (req.subagent) {
+      subagentUSD += cost;
+      let sb = perSubagent.get(req.subagent);
+      if (!sb) {
+        sb = { id: req.subagent, costUSD: 0, requests: 0 };
+        perSubagent.set(req.subagent, sb);
+      }
+      sb.costUSD += cost;
+      sb.requests++;
+    }
 
     const u = req.usage;
     tokens.input += u.input_tokens;
@@ -116,6 +128,7 @@ export function calculate(session: NormalizedSession): CostBreakdown {
     tokens,
     serverToolUse,
     subagentUSD,
+    perSubagent: [...perSubagent.values()].sort((a, b) => b.costUSD - a.costUSD),
     requestCount: session.requests.length,
   };
 }

@@ -3,7 +3,7 @@
  * and issue threads. Same data as the terminal report, no ANSI codes.
  */
 import { categoryRows } from "../categories.js";
-import { turnLabel } from "../privacy.js";
+import { subagentLabel, turnLabel } from "../privacy.js";
 import type { NormalizedSession } from "../adapters/types.js";
 import type { AggregateResult } from "../aggregate.js";
 import type { Attribution, Categories } from "../attribute.js";
@@ -101,6 +101,25 @@ function turnSection(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[]
         `${tok(t.inputGrowthTokens)} / ${tok(t.outputTokens)} |`,
     );
   }
+  lines.push("");
+  return lines;
+}
+
+function subagentSection(result: AggregateResult, limit = 10): string[] {
+  if (result.subagentUSD <= 0) return [];
+  const n = result.subagents.length;
+  const lines = [
+    "### Sub-agents",
+    "",
+    `${usd(result.subagentUSD)} of the total across ${n} run${n === 1 ? "" : "s"}.`,
+    "",
+    "| Cost | Session | Sub-agent | Requests |",
+    "|---:|---|---|---:|",
+  ];
+  for (const s of result.subagents.slice(0, limit)) {
+    lines.push(`| ${usd(s.costUSD)} | \`${s.sessionId.slice(0, 8)}\` | ${cell(subagentLabel(s))} | ${s.requests} |`);
+  }
+  if (n > limit) lines.push("", `… ${n - limit} more`);
   lines.push("");
   return lines;
 }
@@ -207,6 +226,7 @@ export function renderAggregateMarkdown(result: AggregateResult, projectLabel: s
   }
 
   lines.push(...turnSection(result.topTurns, (t) => (t as typeof result.topTurns[number]).sessionId.slice(0, 8)));
+  lines.push(...subagentSection(result));
   lines.push(...modelSection(result.perModel));
   lines.push(...serverToolLine(result.serverToolUse));
 

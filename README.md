@@ -162,7 +162,8 @@ npx tokenbill --all --budget 100
 `--all` combines every session under `~/.claude/projects` into one report:
 total estimated cost, per-session totals, model breakdown, daily spend trend,
 and the most expensive turns across projects. Subagent logs are included through
-their parent session, so they are not counted again as separate sessions.
+their parent session, so they are not counted again as separate sessions, and
+the report lists the costliest sub-agent runs on their own.
 Markdown output and the budget guard work too. The budget applies to the entire
 recorded history, not a monthly allowance. You cannot combine `--all` with a
 session or project path.
@@ -194,6 +195,7 @@ sessions match, the command exits with code 1 and an explanatory message.
 - **Compaction events** - when your context got summarized mid-session, what it cost, and how many tokens of history were dropped.
 - **Cache efficiency** - hit rate, dollars saved vs. running uncached, and dollars wasted on mid-session cache rebuilds (the signature of a broken prompt prefix).
 - **Top expensive turns** - the moments that actually burned the budget, labeled with the prompt you typed and what the agent did in response (`--redact` keeps only the latter).
+- **Sub-agents** - in project and `--all` reports, how much of the total ran in sub-agents and which runs cost the most, labeled with the task each one was given (`--redact` shows the log id instead).
 - **Recommendations** - actionable findings with dollar impact: cache prefix breaks, file-read-heavy sessions, expensive compactions, low hit rates, plus an honest "potential savings" estimate.
 - **Daily spend trend** - a sparkline and per-day breakdown of the last 14 days (project reports), so you can see spend habits over time.
 - **Markdown report** - `--md` renders the same report as GitHub tables for PR comments and job summaries.

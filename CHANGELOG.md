@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Project and `--all` reports have a Sub-agents section: their share of the
+  total and the costliest runs, each with its session and the task it was
+  given (hidden by `--redact`). Also in `--md`, `--html` and `--json`
+  (`subagentUSD`, `subagents`).
+
 ## [0.7.2] - 2026-10-24
 
 ### Added

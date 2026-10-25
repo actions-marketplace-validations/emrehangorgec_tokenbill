@@ -15,6 +15,15 @@ export interface SessionSummary {
   requestCount: number;
 }
 
+/** One subagent run, with the task its parent gave it when the log has one. */
+export interface AggregateSubagent {
+  id: string;
+  sessionId: string;
+  costUSD: number;
+  requests: number;
+  task?: string;
+}
+
 export interface AggregateTurn extends Turn {
   sessionId: string;
 }
@@ -40,6 +49,9 @@ export interface AggregateResult {
   perModel: ModelBreakdown[];
   serverToolUse: { webSearch: number; webFetch: number; costUSD: number };
   topTurns: AggregateTurn[];
+  subagentUSD: number;
+  /** every subagent run across the sessions, largest first */
+  subagents: AggregateSubagent[];
 }
 
 export function aggregate(sessions: NormalizedSession[], topN = 10): AggregateResult {
@@ -65,6 +77,8 @@ export function aggregate(sessions: NormalizedSession[], topN = 10): AggregateRe
   const modelMap = new Map<string, ModelBreakdown>();
   const serverToolUse = { webSearch: 0, webFetch: 0, costUSD: 0 };
   const allTurns: AggregateTurn[] = [];
+  const subagents: AggregateSubagent[] = [];
+  let subagentUSD = 0;
 
   for (const session of sessions) {
     const cost = calculate(session);
@@ -117,6 +131,15 @@ export function aggregate(sessions: NormalizedSession[], topN = 10): AggregateRe
       acc.cacheWrite += m.cacheWrite;
     }
 
+    subagentUSD += cost.subagentUSD;
+    for (const sb of cost.perSubagent) {
+      // The first prompt in a subagent's own log is the task it was handed.
+      const stream = session.streams.find((s) => s.subagent === sb.id);
+      const first = stream?.events.find((e) => e.kind === "userPrompt" && e.text);
+      const task = first?.kind === "userPrompt" ? first.text : undefined;
+      subagents.push({ ...sb, sessionId: session.sessionId, task });
+    }
+
     for (const t of segmentTurns(session)) {
       if (t.costUSD > 0) allTurns.push({ ...t, sessionId: session.sessionId });
     }
@@ -133,6 +156,7 @@ export function aggregate(sessions: NormalizedSession[], topN = 10): AggregateRe
 
   sessionSummaries.sort((a, b) => (b.startTime ?? "").localeCompare(a.startTime ?? ""));
   allTurns.sort((a, b) => b.costUSD - a.costUSD);
+  subagents.sort((a, b) => b.costUSD - a.costUSD);
 
   return {
     sessionCount: sessions.length,
@@ -145,5 +169,7 @@ export function aggregate(sessions: NormalizedSession[], topN = 10): AggregateRe
     perModel: [...modelMap.values()].sort((a, b) => b.costUSD - a.costUSD),
     serverToolUse,
     topTurns: allTurns.slice(0, topN),
+    subagentUSD,
+    subagents,
   };
 }
