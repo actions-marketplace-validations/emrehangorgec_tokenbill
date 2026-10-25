@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-25
+
 ### Added
 - Project and `--all` reports have a Sub-agents section: their share of the
   total and the costliest runs, each with its session and the task it was
