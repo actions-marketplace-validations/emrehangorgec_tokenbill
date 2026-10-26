@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-25
+
+### Added
+- Project and `--all` reports have a Sub-agents section: their share of the
+  total and the costliest runs, each with its session and the task it was
+  given (hidden by `--redact`). Also in `--md`, `--html` and `--json`
+  (`subagentUSD`, `subagents`).
+
+## [0.7.2] - 2026-10-24
+
+### Added
+- `--since` accepts a relative duration (`7d`, `2w`) in addition to an
+  absolute `YYYY-MM-DD` date, counting back from today (UTC), inclusive.
+  Thanks @tokentimerch ([#8](https://github.com/emrehangorgec/tokenbill/pull/8)).
+
 ## [0.7.1] - 2026-10-23
 
 ### Changed

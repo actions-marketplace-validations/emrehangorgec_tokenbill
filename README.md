@@ -59,7 +59,8 @@ Options:
 
 ```
 --json            machine-readable output (schemaVersion 2)
---since <date>    include sessions starting on or after YYYY-MM-DD (UTC)
+--since <date>    include sessions starting on or after YYYY-MM-DD (UTC),
+                  or a relative duration: 7d (last 7 days) or 2w (last 2 weeks)
 --html [file]     shareable single-file HTML report (default: tokenbill-report.html)
 --md [file]       GitHub Markdown report to stdout or a .md file (PR comments, job summaries)
 --top <n>         number of expensive turns to show (default 10)
@@ -136,7 +137,7 @@ repo or download as an artifact. The bundled action writes the Markdown report
 to the job summary and applies the guard:
 
 ```yaml
-- uses: emrehangorgec/tokenbill@v0.7.1
+- uses: emrehangorgec/tokenbill@v0.7.3
   with:
     path: .agent-logs          # a Claude Code log dir or a single .jsonl
     budget: 25                 # optional: fail the job above $25
@@ -161,7 +162,8 @@ npx tokenbill --all --budget 100
 `--all` combines every session under `~/.claude/projects` into one report:
 total estimated cost, per-session totals, model breakdown, daily spend trend,
 and the most expensive turns across projects. Subagent logs are included through
-their parent session, so they are not counted again as separate sessions.
+their parent session, so they are not counted again as separate sessions, and
+the report lists the costliest sub-agent runs on their own.
 Markdown output and the budget guard work too. The budget applies to the entire
 recorded history, not a monthly allowance. You cannot combine `--all` with a
 session or project path.
@@ -175,6 +177,14 @@ npx tokenbill --since 2026-10-01
 npx tokenbill --all --since 2026-10-01 --json
 ```
 
+`--since` also accepts a relative duration - `<n>d` or `<n>w` - counting back
+from today (UTC), inclusive:
+
+```bash
+npx tokenbill --since 7d    # today and the previous 6 days
+npx tokenbill --since 2w    # today and the previous 13 days
+```
+
 This includes each matching session in full, even if it spans multiple days.
 Sessions without a recorded start time are excluded when filtering. If no
 sessions match, the command exits with code 1 and an explanatory message.
@@ -185,6 +195,7 @@ sessions match, the command exits with code 1 and an explanatory message.
 - **Compaction events** - when your context got summarized mid-session, what it cost, and how many tokens of history were dropped.
 - **Cache efficiency** - hit rate, dollars saved vs. running uncached, and dollars wasted on mid-session cache rebuilds (the signature of a broken prompt prefix).
 - **Top expensive turns** - the moments that actually burned the budget, labeled with the prompt you typed and what the agent did in response (`--redact` keeps only the latter).
+- **Sub-agents** - in project and `--all` reports, how much of the total ran in sub-agents and which runs cost the most, labeled with the task each one was given (`--redact` shows the log id instead).
 - **Recommendations** - actionable findings with dollar impact: cache prefix breaks, file-read-heavy sessions, expensive compactions, low hit rates, plus an honest "potential savings" estimate.
 - **Daily spend trend** - a sparkline and per-day breakdown of the last 14 days (project reports), so you can see spend habits over time.
 - **Markdown report** - `--md` renders the same report as GitHub tables for PR comments and job summaries.

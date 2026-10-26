@@ -4,7 +4,7 @@
  * be opened locally or shared as one self-contained file.
  */
 import { categoryRows } from "../categories.js";
-import { turnPrompt } from "../privacy.js";
+import { subagentTask, turnPrompt } from "../privacy.js";
 import type { NormalizedSession } from "../adapters/types.js";
 import type { AggregateResult } from "../aggregate.js";
 import type { Attribution } from "../attribute.js";
@@ -194,6 +194,25 @@ function turnsSection(turns: (Turn & { sessionId?: string })[], aggregate: boole
   return section(title, table(headers, rows, true));
 }
 
+function subagentSection(result: AggregateResult, limit = 10): string {
+  if (result.subagentUSD <= 0) return "";
+  const n = result.subagents.length;
+  const rows = result.subagents.slice(0, limit).map((s) => {
+    const task = subagentTask(s);
+    return [
+      `<b data-v="${s.costUSD}">${usd(s.costUSD)}</b>`,
+      `<span class="dim">${esc(s.sessionId.slice(0, 8))}</span>`,
+      task ? `<span class="prompt">${esc(task)}</span><br><span class="dim">${esc(s.id)}</span>` : esc(s.id),
+      `<span data-v="${s.requests}">${s.requests}</span>`,
+    ];
+  });
+  const more = n > limit ? `<p class="dim">… ${n - limit} more</p>` : "";
+  return section(
+    `Sub-agents (${usd(result.subagentUSD)} across ${n} run${n === 1 ? "" : "s"})`,
+    table([["Cost", "num"], ["Session", "str"], ["Sub-agent", "str"], ["Requests", "num"]], rows, true) + more,
+  );
+}
+
 function modelSection(
   perModel: ModelBreakdown[],
   st: { webSearch: number; webFetch: number; costUSD: number },
@@ -355,6 +374,7 @@ export function renderAggregateHtml(result: AggregateResult, projectLabel: strin
     adviceSection(advice),
     trendSection(dailyTrend(result.sessions)),
     turnsSection(result.topTurns, true),
+    subagentSection(result),
     modelSection(result.perModel, result.serverToolUse),
     section(
       "Sessions (newest first)",

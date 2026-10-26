@@ -20,6 +20,18 @@ export function turnPrompt(t: Turn): string | undefined {
   return showPrompts ? t.prompt : undefined;
 }
 
+/** A subagent's task as its parent wrote it, if shown and known. */
+export function subagentTask(s: { task?: string }): string | undefined {
+  return showPrompts ? s.task : undefined;
+}
+
+/** Single-line label for a subagent run: its quoted task, or its log id. */
+export function subagentLabel(s: { id: string; task?: string }, maxTask = 60): string {
+  const t = subagentTask(s);
+  if (!t) return s.id;
+  return `"${t.length > maxTask ? `${t.slice(0, maxTask - 1)}…` : t}"`;
+}
+
 /** Single-line label: quoted prompt plus what the agent did, or just the latter. */
 export function turnLabel(t: Turn, maxPrompt = 60): string {
   const p = turnPrompt(t);

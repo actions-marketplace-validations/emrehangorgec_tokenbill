@@ -48,6 +48,14 @@ Potential savings: ≈ **$0.95**
 | $0.60 | \`22222222\` | 09:59 | "abcdefghijabcdefghij" · text response | 100 K / 20 K |
 | $0.27 | \`434bccac\` | 07:41 | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" · Bash + Skill | 26 K / 761 |
 
+### Sub-agents
+
+$0.09 of the total across 1 run.
+
+| Cost | Session | Sub-agent | Requests |
+|---:|---|---|---:|
+| $0.09 | \`434bccac\` | "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghi…" | 12 |
+
 ### Per model
 
 | Model | In | Out | Cost |
