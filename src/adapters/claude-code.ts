@@ -6,6 +6,8 @@ import type {
   NormalizedSession,
   Stream,
   TimelineEvent,
+  ToolCall,
+  ToolInput,
   Usage,
 } from "./types.js";
 
@@ -79,6 +81,30 @@ function toolResultChars(rec: any, block: any): number {
     }
   }
   return 0;
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function int(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** Keep only the input fields the audit reads; drop file contents and the rest. */
+export function toolInput(raw: unknown): ToolInput | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const input: ToolInput = {
+    filePath: str(r.file_path) ?? str(r.notebook_path),
+    offset: int(r.offset),
+    limit: int(r.limit),
+    command: str(r.command),
+  };
+  for (const k of Object.keys(input) as (keyof ToolInput)[]) {
+    if (input[k] === undefined) delete input[k];
+  }
+  return Object.keys(input).length > 0 ? input : undefined;
 }
 
 const PREVIEW_CHARS = 160;
@@ -156,13 +182,16 @@ function parseFile(file: string, subagent?: string): ParseResult {
 
       // Register tool_use blocks regardless of dedupe - content blocks of one
       // request are spread across multiple records sharing the requestId.
-      const newToolCalls: { id: string; name: string }[] = [];
+      const newToolCalls: ToolCall[] = [];
       const content = rec.message?.content;
       if (Array.isArray(content)) {
         for (const block of content) {
           if (block?.type === "tool_use" && typeof block.name === "string") {
             toolNameById.set(block.id, block.name);
-            newToolCalls.push({ id: block.id, name: block.name });
+            const input = toolInput(block.input);
+            const call: ToolCall = { id: block.id, name: block.name };
+            if (input) call.input = input;
+            newToolCalls.push(call);
           }
         }
       }
@@ -216,6 +245,8 @@ function parseFile(file: string, subagent?: string): ParseResult {
               toolName: toolNameById.get(block.tool_use_id) ?? "unknown",
               chars: toolResultChars(rec, block),
               timestamp: rec.timestamp ?? "",
+              toolUseId: str(block.tool_use_id) ?? "",
+              isError: block.is_error === true,
             });
           }
         }
