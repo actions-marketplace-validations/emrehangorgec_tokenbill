@@ -13,15 +13,16 @@ import type { Turn } from "../turns.js";
 import { advise, type Advice } from "../advise.js";
 import { pricingLabel } from "../cost/pricing.js";
 import { dailyTrend } from "../trends.js";
+import { amount, costShown, tokens as tok } from "../unit.js";
 
+/** Short amount for table cells: "$1.23" or "1.2 M". */
 function usd(n: number): string {
-  return `$${n.toFixed(n >= 100 ? 0 : 2)}`;
+  return amount(n, true);
 }
 
-function tok(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} M`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)} K`;
-  return String(n);
+/** Header of the amount column. */
+function col(): string {
+  return costShown() ? "Cost" : "Tokens";
 }
 
 /** Table cells: pipes and newlines would break the row. */
@@ -43,7 +44,7 @@ function shortDate(ts: string | undefined): string {
 }
 
 function categorySection(cats: Categories, totalUSD: number): string[] {
-  const lines = ["### Where it went", "", "| Category | Share | Cost |", "|---|---:|---:|"];
+  const lines = ["### Where it went", "", `| Category | Share | ${col()} |`, "|---|---:|---:|"];
   for (const { label, amountUSD } of categoryRows(cats)) {
     const frac = totalUSD > 0 ? amountUSD / totalUSD : 0;
     lines.push(`| ${label} | ${(frac * 100).toFixed(0)}% | ${usd(amountUSD)} |`);
@@ -53,12 +54,11 @@ function categorySection(cats: Categories, totalUSD: number): string[] {
 }
 
 function cacheSection(cache: CacheAnalysis): string[] {
-  const lines = [
-    "### Cache efficiency",
-    "",
-    `- Cache hit rate: **${(cache.hitRate * 100).toFixed(0)}%**, saved ≈ ${usd(cache.savedUSD)} vs. uncached`,
-  ];
-  if (cache.invalidations > 0) {
+  const saved = costShown() ? `, saved ≈ ${usd(cache.savedUSD)} vs. uncached` : "";
+  const lines = ["### Cache efficiency", "", `- Cache hit rate: **${(cache.hitRate * 100).toFixed(0)}%**${saved}`];
+  if (cache.invalidations > 0 && !costShown()) {
+    lines.push(`- Mid-session cache rebuilds after prefix breaks: **${cache.invalidations}**`);
+  } else if (cache.invalidations > 0) {
     lines.push(
       `- Wasted on cache re-writes after prefix breaks: **${usd(cache.wastedUSD)}** ` +
         `(${cache.invalidations} rebuild${cache.invalidations > 1 ? "s" : ""})`,
@@ -77,7 +77,7 @@ function adviceSection(advice: Advice): string[] {
     lines.push(`- ${f.severity === "warn" ? "⚠️" : "✅"} ${f.title}`);
     if (f.detail) lines.push(`  - ${f.detail}`);
   }
-  if (advice.potentialSavingsUSD >= 0.05) {
+  if (costShown() && advice.potentialSavingsUSD >= 0.05) {
     lines.push("", `Potential savings: ≈ **${usd(advice.potentialSavingsUSD)}**`);
   }
   lines.push("");
@@ -87,11 +87,13 @@ function adviceSection(advice: Advice): string[] {
 function turnSection(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[] {
   if (turns.length === 0) return [];
   const title = sessionIdOf
-    ? `Top ${turns.length} most expensive turns (all sessions)`
-    : `Top ${turns.length} most expensive turns`;
+    ? `Top ${turns.length} ${costShown() ? "most expensive" : "largest"} turns (all sessions)`
+    : `Top ${turns.length} ${costShown() ? "most expensive" : "largest"} turns`;
   const lines = [`### ${title}`, ""];
   lines.push(
-    sessionIdOf ? "| Cost | Session | Time | What happened | In / Out |" : "| Cost | Time | What happened | In / Out |",
+    sessionIdOf
+      ? `| ${col()} | Session | Time | What happened | In / Out |`
+      : `| ${col()} | Time | What happened | In / Out |`,
     sessionIdOf ? "|---:|---|---|---|---:|" : "|---:|---|---|---:|",
   );
   for (const t of turns) {
@@ -113,7 +115,7 @@ function subagentSection(result: AggregateResult, limit = 10): string[] {
     "",
     `${usd(result.subagentUSD)} of the total across ${n} run${n === 1 ? "" : "s"}.`,
     "",
-    "| Cost | Session | Sub-agent | Requests |",
+    `| ${col()} | Session | Sub-agent | Requests |`,
     "|---:|---|---|---:|",
   ];
   for (const s of result.subagents.slice(0, limit)) {
@@ -125,6 +127,14 @@ function subagentSection(result: AggregateResult, limit = 10): string[] {
 }
 
 function modelSection(perModel: ModelBreakdown[]): string[] {
+  if (!costShown()) {
+    const lines = ["### Per model", "", "| Model | In | Out |", "|---|---:|---:|"];
+    for (const m of perModel) {
+      lines.push(`| \`${m.model}\` | ${tok(m.input + m.cacheRead + m.cacheWrite)} | ${tok(m.output)} |`);
+    }
+    lines.push("");
+    return lines;
+  }
   const lines = ["### Per model", "", "| Model | In | Out | Cost |", "|---|---:|---:|---:|"];
   for (const m of perModel) {
     const flag = m.pricedExactly ? "" : " ⚠️ unknown model, sonnet rates";
@@ -141,11 +151,20 @@ function serverToolLine(st: { webSearch: number; webFetch: number; costUSD: numb
   const parts: string[] = [];
   if (st.webSearch > 0) parts.push(`${st.webSearch} web search${st.webSearch === 1 ? "" : "es"}`);
   if (st.webFetch > 0) parts.push(`${st.webFetch} web fetch${st.webFetch === 1 ? "" : "es"}`);
+  if (!costShown()) return [`Server tools: ${parts.join(", ")}`, ""];
   const note = st.costUSD > 0 ? usd(st.costUSD) : "no per-request charge";
   return [`Server tools: ${parts.join(", ")} (${note})`, ""];
 }
 
+/** Bold headline: the total in the current unit. */
+function totalLabel(n: number): string {
+  return costShown() ? `Total estimated cost: ${usd(n)}` : `Tokens sent and written: ${amount(n)}`;
+}
+
 function footer(): string {
+  if (!costShown()) {
+    return "<sub>Token counts from the session logs · file and tool shares are estimates · generated by tokenbill</sub>";
+  }
   return `<sub>API-equivalent cost estimate · prices as of ${pricingLabel()} · subscription users pay flat fees · generated by tokenbill</sub>`;
 }
 
@@ -159,13 +178,13 @@ export function renderMarkdown(
   const lines: string[] = [
     `## tokenbill: session \`${session.sessionId.slice(0, 8)}\``,
     "",
-    `**Total estimated cost: ${usd(cost.totalUSD)}** · ${cost.requestCount} API requests · ${session.models.join(", ")}`,
+    `**${totalLabel(cost.totalUSD)}** · ${cost.requestCount} API requests · ${session.models.join(", ")}`,
     "",
   ];
   lines.push(...categorySection(attr, cost.totalUSD));
   for (const e of attr.compactionEvents) {
     lines.push(
-      `- Context compacted at ${hhmm(e.timestamp)}: cost ${usd(e.costUSD)}, dropped ~${tok(e.droppedTokens)} tokens of history` +
+      `- Context compacted at ${hhmm(e.timestamp)}: ${costShown() ? "cost" : "re-sent"} ${amount(e.costUSD)}, dropped ~${tok(e.droppedTokens)} tokens of history` +
         (e.subagent ? ` (sub-agent ${e.subagent})` : ""),
     );
   }
@@ -195,7 +214,7 @@ export function renderAggregateMarkdown(result: AggregateResult, projectLabel: s
   const lines: string[] = [
     `## tokenbill: \`${projectLabel}\``,
     "",
-    `**Total estimated cost: ${usd(result.totalUSD)}** · ${result.sessionCount} session${result.sessionCount === 1 ? "" : "s"}` +
+    `**${totalLabel(result.totalUSD)}** · ${result.sessionCount} session${result.sessionCount === 1 ? "" : "s"}` +
       (oldest && newest ? ` · ${shortDate(oldest)} → ${shortDate(newest)}` : ""),
     "",
   ];
@@ -220,7 +239,8 @@ export function renderAggregateMarkdown(result: AggregateResult, projectLabel: s
 
   const days = dailyTrend(result.sessions).filter((b) => b.sessions > 0);
   if (days.length >= 2) {
-    lines.push("### Daily spend", "", "| Day | Cost | Sessions |", "|---|---:|---:|");
+    const what = costShown() ? "spend" : "tokens";
+    lines.push(`### Daily ${what}`, "", `| Day | ${col()} | Sessions |`, "|---|---:|---:|");
     for (const b of days) lines.push(`| ${b.date} | ${usd(b.costUSD)} | ${b.sessions} |`);
     lines.push("");
   }
@@ -231,7 +251,7 @@ export function renderAggregateMarkdown(result: AggregateResult, projectLabel: s
   lines.push(...serverToolLine(result.serverToolUse));
 
   lines.push("<details><summary>Sessions (newest first)</summary>", "");
-  lines.push("| Cost | Session | Started | Models |", "|---:|---|---|---|");
+  lines.push(`| ${col()} | Session | Started | Models |`, "|---:|---|---|---|");
   for (const s of result.sessions) {
     lines.push(`| ${usd(s.costUSD)} | \`${s.sessionId.slice(0, 8)}\` | ${shortDate(s.startTime)} | ${s.models.join(", ")} |`);
   }

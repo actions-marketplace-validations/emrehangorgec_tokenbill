@@ -5,6 +5,7 @@
  */
 import type { Categories } from "./attribute.js";
 import type { CacheAnalysis } from "./cost/cache.js";
+import { amount, costShown, materialAmount } from "./unit.js";
 
 export type FindingKind = "cacheBreaks" | "fileReads" | "compaction" | "lowHitRate" | "healthyCache";
 
@@ -37,22 +38,30 @@ const FILE_READ_SHARE_THRESHOLD = 0.3;
 const COMPACTION_SHARE_THRESHOLD = 0.1;
 const LOW_HIT_RATE = 0.5;
 const HEALTHY_HIT_RATE = 0.8;
-const MIN_MATERIAL_USD = 0.05;
-
-function usd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
 
 export function advise(input: AdviseInput): Advice {
   const { totalUSD, categories, cache, compactionEventCount } = input;
   const findings: Finding[] = [];
+  const material = materialAmount();
+  // Savings are a dollar estimate; in tokens there is no honest equivalent.
+  const savings = (n: number) => (costShown() ? n : undefined);
+  const share = costShown() ? "spend" : "context";
 
-  if (cache.invalidations > 0 && cache.wastedUSD >= MIN_MATERIAL_USD) {
+  if (cache.invalidations > 0 && !costShown()) {
     const n = cache.invalidations;
     findings.push({
       kind: "cacheBreaks",
       severity: "warn",
-      title: `${n} cache prefix break${n > 1 ? "s" : ""} cost you ≈ ${usd(cache.wastedUSD)}`,
+      title: `${n} cache prefix break${n > 1 ? "s" : ""}: the context was re-cached from scratch`,
+      detail:
+        "usually mid-session config or system prompt changes; keep the prompt prefix stable",
+    });
+  } else if (cache.invalidations > 0 && cache.wastedUSD >= material) {
+    const n = cache.invalidations;
+    findings.push({
+      kind: "cacheBreaks",
+      severity: "warn",
+      title: `${n} cache prefix break${n > 1 ? "s" : ""} cost you ≈ ${amount(cache.wastedUSD)}`,
       detail:
         "usually mid-session config or system prompt changes; keep the prompt prefix stable",
       savingsUSD: cache.wastedUSD,
@@ -61,33 +70,33 @@ export function advise(input: AdviseInput): Advice {
   }
 
   const fileReadShare = totalUSD > 0 ? categories.fileReadsUSD / totalUSD : 0;
-  if (fileReadShare >= FILE_READ_SHARE_THRESHOLD && categories.fileReadsUSD >= MIN_MATERIAL_USD) {
+  if (fileReadShare >= FILE_READ_SHARE_THRESHOLD && categories.fileReadsUSD >= material) {
     const upTo = categories.fileReadsUSD * 0.25;
     findings.push({
       kind: "fileReads",
       severity: "warn",
-      title: `${Math.round(fileReadShare * 100)}% of spend is file reads (≈ ${usd(categories.fileReadsUSD)})`,
+      title: `${Math.round(fileReadShare * 100)}% of ${share} is file reads (≈ ${amount(categories.fileReadsUSD)})`,
       detail: "prefer targeted reads (offset/limit, grep) over re-reading whole files",
-      savingsUSD: upTo,
+      savingsUSD: savings(upTo),
       costUSD: categories.fileReadsUSD,
     });
   }
 
   const compactionShare = totalUSD > 0 ? categories.compactionUSD / totalUSD : 0;
-  if (compactionShare >= COMPACTION_SHARE_THRESHOLD && categories.compactionUSD >= MIN_MATERIAL_USD) {
+  if (compactionShare >= COMPACTION_SHARE_THRESHOLD && categories.compactionUSD >= material) {
     const n = compactionEventCount;
     findings.push({
       kind: "compaction",
       severity: "warn",
-      title: `context compaction cost ≈ ${usd(categories.compactionUSD)} (${n} event${n === 1 ? "" : "s"})`,
+      title: `context compaction cost ≈ ${amount(categories.compactionUSD)} (${n} event${n === 1 ? "" : "s"})`,
       detail: "long sessions pay to re-summarize their own history; start fresh sessions per task",
-      savingsUSD: categories.compactionUSD,
+      savingsUSD: savings(categories.compactionUSD),
       costUSD: categories.compactionUSD,
     });
   }
 
   const inputTokens = cache.tokens.read + cache.tokens.write + cache.tokens.uncached;
-  if (cache.hitRate < LOW_HIT_RATE && inputTokens > 0 && totalUSD >= MIN_MATERIAL_USD) {
+  if (cache.hitRate < LOW_HIT_RATE && inputTokens > 0 && totalUSD >= material) {
     findings.push({
       kind: "lowHitRate",
       severity: "warn",

@@ -1,4 +1,5 @@
 import type { NormalizedRequest, NormalizedSession, Usage } from "../adapters/types.js";
+import { costShown } from "../unit.js";
 import { lookupPrice, SERVER_TOOL_PRICING, TIER_MULTIPLIERS } from "./pricing.js";
 
 export interface TokenTotals {
@@ -32,7 +33,8 @@ export interface CostBreakdown {
  */
 export function serverToolCostUSD(u: Usage): number {
   const st = u.server_tool_use;
-  if (!st) return 0;
+  // A search is a fee, not tokens: it has no token-mode amount.
+  if (!st || !costShown()) return 0;
   return (
     (st.web_search_requests ?? 0) * SERVER_TOOL_PRICING.webSearchPerRequest +
     (st.web_fetch_requests ?? 0) * SERVER_TOOL_PRICING.webFetchPerRequest
@@ -49,7 +51,7 @@ export function requestCostUSD(req: NormalizedRequest): number {
   // Fast mode runs the same model at premium rates; batch tier discounts every
   // token class. Priority tier is not modelled - see README caveats.
   const rates = u.speed === "fast" && price.fast ? price.fast : price;
-  const tierMult = u.service_tier === "batch" ? TIER_MULTIPLIERS.batch : 1;
+  const tierMult = u.service_tier === "batch" && costShown() ? TIER_MULTIPLIERS.batch : 1;
 
   const perTokIn = (rates.inputPerMTok / 1e6) * tierMult;
   const perTokOut = (rates.outputPerMTok / 1e6) * tierMult;

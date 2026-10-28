@@ -1,3 +1,4 @@
+import { costShown } from "../unit.js";
 import { GENERATED_PRICES } from "./prices.generated.js";
 
 /** Fast mode (`usage.speed === "fast"`) runs the same model at premium rates. */
@@ -123,12 +124,23 @@ export const FALLBACK_PRICE: ModelPrice = {
   cacheWrite1hMult: 2,
 };
 
+/** Token mode: every token class counts 1, so costs sum to token counts. */
+const UNIT_PRICE: ModelPrice = {
+  match: "(tokens)",
+  inputPerMTok: 1e6,
+  outputPerMTok: 1e6,
+  cacheReadMult: 1,
+  cacheWrite5mMult: 1,
+  cacheWrite1hMult: 1,
+};
+
 /**
  * Longest-prefix match, restricted to rows whose effective window contains
  * `at`. Ties on prefix length go to the row that starts later, so a newer rate
  * wins over an older open-ended one.
  */
 export function lookupPrice(modelId: string, at?: string): PriceLookup {
+  if (!costShown()) return { price: UNIT_PRICE, exact: true };
   const day = referenceDay(at);
   let best: ModelPrice | undefined;
   for (const p of PRICE_TABLE) {

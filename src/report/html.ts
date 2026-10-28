@@ -14,6 +14,7 @@ import type { Turn } from "../turns.js";
 import { advise, type Advice } from "../advise.js";
 import { pricingLabel } from "../cost/pricing.js";
 import { dailyTrend, type DayBucket } from "../trends.js";
+import { amount, costShown, tokens as tok } from "../unit.js";
 
 const C = {
   bg: "#0d1117",
@@ -42,14 +43,14 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Short amount for cells: "$1.23" or "1.2 M". */
 function usd(n: number): string {
-  return `$${n.toFixed(n >= 100 ? 0 : 2)}`;
+  return amount(n, true);
 }
 
-function tok(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} M`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)} K`;
-  return String(n);
+/** Header of the amount column. */
+function col(): string {
+  return costShown() ? "Cost" : "Tokens";
 }
 
 function hhmm(ts: string): string {
@@ -99,10 +100,13 @@ function categorySection(cat: CategoryLike, totalUSD: number): string {
 function cacheSection(cache: CacheAnalysis): string {
   const rate = cache.hitRate;
   const rateColor = rate >= 0.8 ? C.good : rate >= 0.5 ? C.warn : C.bad;
-  let body =
-    `<p>Cache hit rate: <b style="color:${rateColor}">${(rate * 100).toFixed(0)}%</b>` +
-    ` &middot; saved &asymp; <b style="color:${C.good}">${usd(cache.savedUSD)}</b> vs. uncached</p>`;
-  if (cache.invalidations > 0) {
+  const saved = costShown()
+    ? ` &middot; saved &asymp; <b style="color:${C.good}">${usd(cache.savedUSD)}</b> vs. uncached`
+    : "";
+  let body = `<p>Cache hit rate: <b style="color:${rateColor}">${(rate * 100).toFixed(0)}%</b>${saved}</p>`;
+  if (cache.invalidations > 0 && !costShown()) {
+    body += `<p>Mid-session cache rebuilds after prefix breaks: <b style="color:${C.bad}">${cache.invalidations}</b></p>`;
+  } else if (cache.invalidations > 0) {
     body += `<p>Wasted on cache re-writes after prefix breaks: <b style="color:${C.bad}">${usd(cache.wastedUSD)}</b> <span class="dim">(${cache.invalidations} rebuild${cache.invalidations > 1 ? "s" : ""})</span></p>`;
   } else {
     body += `<p>No mid-session cache rebuilds detected</p>`;
@@ -122,7 +126,7 @@ function adviceSection(advice: Advice): string {
       return `<div class="finding">${mark} ${esc(f.title)}${detail}</div>`;
     })
     .join("");
-  if (advice.potentialSavingsUSD >= 0.05) {
+  if (costShown() && advice.potentialSavingsUSD >= 0.05) {
     body += `<p class="dim">Potential savings this project: &asymp; ${usd(advice.potentialSavingsUSD)}</p>`;
   }
   return section("Recommendations", body);
@@ -148,7 +152,7 @@ function trendSection(buckets: DayBucket[]): string {
     })
     .join("");
   return section(
-    `Daily spend (last ${buckets.length} days)`,
+    `Daily ${costShown() ? "spend" : "tokens"} (last ${buckets.length} days)`,
     `<div class="trend">${cols}</div><p class="dim">total ${usd(total)}</p>`,
   );
 }
@@ -175,8 +179,8 @@ function turnCell(t: Turn): string {
 function turnsSection(turns: (Turn & { sessionId?: string })[], aggregate: boolean): string {
   if (turns.length === 0) return "";
   const headers: [string, "num" | "str"][] = aggregate
-    ? [["Cost", "num"], ["Session", "str"], ["Time", "str"], ["What happened", "str"], ["In", "num"], ["Out", "num"]]
-    : [["Cost", "num"], ["Time", "str"], ["What happened", "str"], ["In", "num"], ["Out", "num"]];
+    ? [[col(), "num"], ["Session", "str"], ["Time", "str"], ["What happened", "str"], ["In", "num"], ["Out", "num"]]
+    : [[col(), "num"], ["Time", "str"], ["What happened", "str"], ["In", "num"], ["Out", "num"]];
   const rows = turns.map((t) => {
     const cells = [
       `<b data-v="${t.costUSD}">${usd(t.costUSD)}</b>`,
@@ -188,9 +192,10 @@ function turnsSection(turns: (Turn & { sessionId?: string })[], aggregate: boole
     ];
     return cells;
   });
+  const which = costShown() ? "most expensive" : "largest";
   const title = aggregate
-    ? `Top ${turns.length} most expensive turns (all sessions)`
-    : `Top ${turns.length} most expensive turns`;
+    ? `Top ${turns.length} ${which} turns (all sessions)`
+    : `Top ${turns.length} ${which} turns`;
   return section(title, table(headers, rows, true));
 }
 
@@ -209,7 +214,7 @@ function subagentSection(result: AggregateResult, limit = 10): string {
   const more = n > limit ? `<p class="dim">… ${n - limit} more</p>` : "";
   return section(
     `Sub-agents (${usd(result.subagentUSD)} across ${n} run${n === 1 ? "" : "s"})`,
-    table([["Cost", "num"], ["Session", "str"], ["Sub-agent", "str"], ["Requests", "num"]], rows, true) + more,
+    table([[col(), "num"], ["Session", "str"], ["Sub-agent", "str"], ["Requests", "num"]], rows, true) + more,
   );
 }
 
@@ -221,19 +226,17 @@ function modelSection(
     esc(m.model),
     `<span data-v="${m.input + m.cacheRead + m.cacheWrite}">${tok(m.input + m.cacheRead + m.cacheWrite)}</span>`,
     `<span data-v="${m.output}">${tok(m.output)}</span>`,
-    `<b data-v="${m.costUSD}">${usd(m.costUSD)}</b>`,
+    ...(costShown() ? [`<b data-v="${m.costUSD}">${usd(m.costUSD)}</b>`] : []),
   ]);
-  let body = table(
-    [["Model", "str"], ["In", "num"], ["Out", "num"], ["Cost", "num"]],
-    rows,
-    false,
-  );
+  const headers: [string, "num" | "str"][] = [["Model", "str"], ["In", "num"], ["Out", "num"]];
+  if (costShown()) headers.push(["Cost", "num"]);
+  let body = table(headers, rows, false);
   if (st.webSearch + st.webFetch > 0) {
     const parts: string[] = [];
     if (st.webSearch > 0) parts.push(`${st.webSearch} web search${st.webSearch === 1 ? "" : "es"}`);
     if (st.webFetch > 0) parts.push(`${st.webFetch} web fetch${st.webFetch === 1 ? "" : "es"}`);
-    const note = st.costUSD > 0 ? usd(st.costUSD) : "no per-request charge";
-    body += `<p class="dim">Server tools: ${esc(parts.join(", "))} &middot; ${esc(note)}</p>`;
+    const note = !costShown() ? "" : st.costUSD > 0 ? usd(st.costUSD) : "no per-request charge";
+    body += `<p class="dim">Server tools: ${esc(parts.join(", "))}${note ? ` &middot; ${esc(note)}` : ""}</p>`;
   }
   return section("Per model", body);
 }
@@ -283,9 +286,13 @@ function page(subtitle: string, totalUSD: number, sections: string[]): string {
 <main>
 <h1><span class="brand">tokenbill</span> <span class="dim">${esc(subtitle)}</span></h1>
 <div class="total">${usd(totalUSD)}</div>
-<div class="dim">TOTAL ESTIMATED COST</div>
+<div class="dim">${costShown() ? "TOTAL ESTIMATED COST" : "TOKENS SENT AND WRITTEN"}</div>
 ${sections.filter(Boolean).join("\n")}
-<footer>API-equivalent cost estimate &middot; prices as of ${esc(pricingLabel())} &middot; subscription users pay flat fees</footer>
+<footer>${
+    costShown()
+      ? `API-equivalent cost estimate &middot; prices as of ${esc(pricingLabel())} &middot; subscription users pay flat fees`
+      : "Token counts from the session logs &middot; file and tool shares are estimates"
+  }</footer>
 </main>
 <script>
 function st(th,i){
@@ -379,7 +386,7 @@ export function renderAggregateHtml(result: AggregateResult, projectLabel: strin
     section(
       "Sessions (newest first)",
       table(
-        [["Cost", "num"], ["", "str"], ["Session", "str"], ["Date", "str"], ["Models", "str"]],
+        [[col(), "num"], ["", "str"], ["Session", "str"], ["Date", "str"], ["Models", "str"]],
         sessionRows,
         false,
       ),

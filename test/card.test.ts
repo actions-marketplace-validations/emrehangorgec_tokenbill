@@ -11,11 +11,11 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function data(plan?: { name: string; feeUSD: number; windowDays: number }) {
+function data() {
   const sessions = ["fixtures/basic.jsonl", "fixtures/compaction.jsonl"].map((f) =>
     claudeCodeAdapter.parse(f),
   );
-  return cardData(aggregate(sessions, 5), "demo", plan);
+  return cardData(aggregate(sessions, 5), "demo");
 }
 
 describe("share card", () => {
@@ -76,25 +76,6 @@ describe("share card", () => {
     };
     const svg = renderCardSvg(d);
     expect(svg).toContain(">Bash ×30 + Write ×11 + Read ×6 + Edit ×4…<");
-  });
-
-  it("states the plan as a multiple or a share of its price", () => {
-    const big = data({ name: "Pro", feeUSD: 0.01, windowDays: 30 });
-    expect(renderCardSvg(big)).toMatch(/\d+\.\d×/);
-    expect(cardCaption(big)).toContain("× what my Pro plan costs");
-    const small = data({ name: "Max 20x", feeUSD: 1e6, windowDays: 30 });
-    expect(cardCaption(small)).toContain("% of my Max 20x plan's price");
-  });
-
-  it("says how many days of use the plan comparison covers", () => {
-    const d = data({ name: "Pro", feeUSD: 20, windowDays: 30 });
-    expect(d.activeDays).toBeGreaterThan(0);
-    const shortWindow = { ...d, activeDays: 2 };
-    expect(renderCardSvg(shortWindow)).toContain("($20.00) in 2 days");
-    const fullWindow = { ...d, activeDays: 30 };
-    expect(renderCardSvg(fullWindow)).not.toMatch(/\) in \d+ days?/);
-    const prorated = { ...d, activeDays: 2, plan: { name: "Pro", feeUSD: 77, windowDays: 115 } };
-    expect(renderCardSvg(prorated)).not.toMatch(/\) in \d+ days?/);
   });
 
   it("labels the day strip with the day it ends on", () => {

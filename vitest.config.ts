@@ -8,5 +8,6 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     env: { TZ: "UTC" },
+    setupFiles: ["test/setup.ts"],
   },
 });

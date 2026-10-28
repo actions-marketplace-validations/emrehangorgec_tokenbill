@@ -17,7 +17,7 @@ import {
 } from "./project-dir.js";
 import { svgToPng } from "./card-png.js";
 import { setShowPrompts } from "./privacy.js";
-import { cardCaption, cardData, PLANS, renderCardSvg, type PlanInfo } from "./report/card.js";
+import { cardCaption, cardData, renderCardSvg } from "./report/card.js";
 import { renderAggregateHtml, renderHtml } from "./report/html.js";
 import { renderAggregateJson, renderJson } from "./report/json.js";
 import { renderAggregateMarkdown, renderMarkdown } from "./report/markdown.js";
@@ -25,9 +25,10 @@ import { renderAggregateReport, renderReport } from "./report/terminal.js";
 import { setColorEnabled } from "./report/theme.js";
 import { runStatusline } from "./statusline.js";
 import { topTurns } from "./turns.js";
+import { setUnit } from "./unit.js";
 
 const HELP = `Usage: tokenbill [options] [session-file.jsonl | project-dir]
-       tokenbill card [options] [project-dir]   (shareable PNG of where the money went)
+       tokenbill card [options] [project-dir]   (shareable PNG of where the context went)
        tokenbill statusline   (Claude Code statusLine command, reads JSON on stdin)
 
 With no path argument, analyzes every session in the Claude Code project
@@ -49,17 +50,16 @@ Options:
                     (default: tokenbill-report.html)
   --md [file]       GitHub Markdown report, to stdout or a .md file
                     (PR comments, $GITHUB_STEP_SUMMARY)
-  --top <n>         number of expensive turns to show (default 10)
-  --budget <usd>    exit 2 if the reported total exceeds this amount (for CI)
-  --pricing <file>  JSON file overriding the built-in price table
+  --top <n>         number of largest turns to show (default 10)
+  --cost            report API-equivalent USD instead of tokens
+  --budget <usd>    exit 2 if the estimated cost exceeds this amount (for CI;
+                    implies --cost)
+  --pricing <file>  JSON file overriding the built-in price table (with --cost)
   --redact          hide your prompt text (turns show tool activity instead)
   --no-color        disable colored output (NO_COLOR env also respected)
   -h, --help        show this help
 
 Card options:
-  --plan <plan>     pro, max5, max20 or a monthly USD amount: adds the
-                    "N× my plan" figure (30 days ending on --until or today,
-                    unless --since is set)
   --out <file>      output path, .png or .svg (default: tokenbill-card.png)
 
 Exit codes: 0 ok, 1 error, 2 budget exceeded.`;
@@ -177,7 +177,6 @@ let budget: number | undefined;
 let target: string | undefined;
 let since: string | undefined;
 let until: string | undefined;
-let planArg: string | undefined;
 let cardOut = path.resolve("tokenbill-card.png");
 
 /**
@@ -253,12 +252,8 @@ for (let i = 0; i < argv.length; i++) {
     md = argv[i + 1] && argv[i + 1].endsWith(".md") ? path.resolve(argv[++i]) : true;
   } else if (a === "--redact") {
     setShowPrompts(false);
-  } else if (card && a === "--plan") {
-    planArg = argv[++i];
-    if (!planArg || !(planArg in PLANS || Number(planArg) > 0)) {
-      console.error("--plan expects pro, max5, max20 or a monthly USD amount");
-      process.exit(1);
-    }
+  } else if (a === "--cost") {
+    setUnit("usd");
   } else if (card && a === "--out") {
     const out = argv[++i];
     if (!out || !/\.(png|svg)$/i.test(out)) {
@@ -280,6 +275,8 @@ for (let i = 0; i < argv.length; i++) {
       console.error("--budget expects a non-negative dollar amount");
       process.exit(1);
     }
+    // The guard compares dollars, so the report it runs after is in dollars too.
+    setUnit("usd");
   } else if (a === "--pricing") {
     const file = argv[++i];
     if (!file || !fs.existsSync(file)) {
@@ -320,33 +317,13 @@ if (card && (json || html || md || budget !== undefined)) {
   process.exit(1);
 }
 
-/**
- * The plan fee over the card's window. Without --since the card covers
- * 30 days ending on --until (or today), for one month's fee.
- */
-function resolvePlan(): PlanInfo | undefined {
-  if (!planArg) return undefined;
-  const known = PLANS[planArg];
-  const monthly = known ? known.monthlyUSD : Number(planArg);
-  const name = known ? known.name : `$${monthly}/mo`;
-  if (!since || planWindowDefault) return { name, feeUSD: monthly, windowDays: 30 };
-  const end = until ? Date.parse(`${until}T00:00:00.000Z`) + 864e5 : Date.now();
-  const days = Math.max(1, Math.ceil((end - Date.parse(`${since}T00:00:00.000Z`)) / 864e5));
-  return { name, feeUSD: (monthly * days) / 30, windowDays: days };
-}
-const planWindowDefault = card && !!planArg && !since;
-if (planWindowDefault) {
-  const end = until ? Date.parse(`${until}T00:00:00.000Z`) + 864e5 : Date.now();
-  since = new Date(end - 30 * 864e5).toISOString().slice(0, 10);
-}
-
 if (since && until && until < since) {
   console.error("--until must be on or after --since");
   process.exit(1);
 }
 
 function writeCard(result: ReturnType<typeof aggregate>, project: string): void {
-  const data = cardData(result, project, resolvePlan());
+  const data = cardData(result, project);
   const svg = renderCardSvg(data);
   let out = cardOut;
   if (out.toLowerCase().endsWith(".png")) {
@@ -362,9 +339,6 @@ function writeCard(result: ReturnType<typeof aggregate>, project: string): void 
     fs.writeFileSync(out, svg);
   }
   console.error(`Wrote ${out}\n`);
-  if (!planArg) {
-    console.error("Tip: add --plan pro, max5 or max20 to compare against your subscription.\n");
-  }
   console.log(cardCaption(data));
 }
 

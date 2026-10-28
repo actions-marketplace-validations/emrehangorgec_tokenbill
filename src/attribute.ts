@@ -21,6 +21,7 @@
 import type { NormalizedRequest, NormalizedSession, Stream } from "./adapters/types.js";
 import { serverToolCostUSD } from "./cost/calculator.js";
 import { lookupPrice } from "./cost/pricing.js";
+import { costShown } from "./unit.js";
 
 export const CHARS_PER_TOKEN = 3.5;
 
@@ -87,11 +88,18 @@ function attributeStream(stream: Stream, acc: Attribution): void {
     acc.serverToolsUSD += serverToolCostUSD(req.usage);
 
     let inputSideUSD = uncachedInUSD + cacheReadUSD;
+    // In tokens a cache write is just content entering the context, not a
+    // premium of its own: it joins the input side and is split by origin.
+    let cacheWriteUSD = writeUSD;
+    if (!costShown()) {
+      inputSideUSD += writeUSD;
+      cacheWriteUSD = 0;
+    }
 
     if (prevEffIn === null) {
       // First request: system prompt + CLAUDE.md + tool schemas → overhead.
       comp.overhead += effIn;
-      acc.cacheWritesUSD += writeUSD;
+      acc.cacheWritesUSD += cacheWriteUSD;
     } else {
       const delta = effIn - prevEffIn;
       if (delta < 0) {
@@ -121,7 +129,7 @@ function attributeStream(stream: Stream, acc: Attribution): void {
         comp.fileReads += take(pend.fileReadChars);
         comp.toolResults += take(pend.toolResultChars);
         comp.overhead += take(pend.userChars) + remaining; // residual → overhead
-        acc.cacheWritesUSD += writeUSD;
+        acc.cacheWritesUSD += cacheWriteUSD;
       }
     }
 

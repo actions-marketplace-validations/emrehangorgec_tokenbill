@@ -38,8 +38,9 @@ function setup() {
   return { home, project };
 }
 
+/** Runs the CLI with --cost, so totals are the dollar figures the tests pin. */
 function run(home: string, args: string[]) {
-  return spawnSync(process.execPath, [TSX_CLI, "src/cli.ts", ...args], {
+  return spawnSync(process.execPath, [TSX_CLI, "src/cli.ts", ...args, "--cost"], {
     encoding: "utf8",
     env: { ...process.env, HOME: home, USERPROFILE: home },
   });
@@ -240,15 +241,12 @@ it("applies --until before the budget check", () => {
   expect(filtered.status).toBe(0);
 });
 
-it("ends a card's plan comparison at --until", () => {
+it("ends a card's window at --until", () => {
   const { home, project } = setup();
   const out = path.join(home, "card.svg");
-  const explicit = run(home, ["card", project, "--redact", "--plan", "30",
-    "--since", "2026-09-30", "--until", "2026-09-30", "--out", out]);
-  expect(explicit.status).toBe(0);
-  expect(fs.readFileSync(out, "utf8")).toContain("($1.00)");
-  const defaultWindow = run(home, ["card", project, "--redact", "--plan", "30",
-    "--until", "2026-09-30", "--out", out]);
-  expect(defaultWindow.status).toBe(0);
-  expect(fs.readFileSync(out, "utf8")).toContain("($30.00)");
+  const result = run(home, ["card", project, "--redact", "--until", "2026-09-30", "--out", out]);
+  expect(result.status).toBe(0);
+  const svg = fs.readFileSync(out, "utf8");
+  expect(svg).toContain("Sep 30, 2026");
+  expect(svg).toContain("1 session<");
 });

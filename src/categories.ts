@@ -3,6 +3,7 @@
  * report so the terminal, HTML, Markdown and card all say the same thing.
  */
 import type { Categories } from "./attribute.js";
+import { costShown } from "./unit.js";
 
 export type CategoryKey =
   | "generation"
@@ -52,15 +53,18 @@ const META: Record<CategoryKey, { label: string; hint: string }> = {
   },
 };
 
-/** Rows sorted by cost; compaction and web searches only appear when nonzero. */
+/**
+ * Rows sorted by amount; compaction and web searches only appear when nonzero.
+ * Cache writes are a price premium, so they are a row only in --cost reports.
+ */
 export function categoryRows(c: Categories): CategoryRow[] {
   const amounts: [CategoryKey, number][] = [
     ["generation", c.generationUSD],
     ["toolResults", c.toolResultsUSD],
     ["fileReads", c.fileReadsUSD],
     ["overhead", c.overheadUSD],
-    ["cacheWrites", c.cacheWritesUSD],
   ];
+  if (costShown()) amounts.push(["cacheWrites", c.cacheWritesUSD]);
   if (c.compactionUSD > 0) amounts.push(["compaction", c.compactionUSD]);
   if (c.serverToolsUSD > 0) amounts.push(["serverTools", c.serverToolsUSD]);
   return amounts
