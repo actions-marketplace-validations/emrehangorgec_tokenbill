@@ -29,7 +29,7 @@ import { setUnit } from "./unit.js";
 
 const HELP = `Usage: tokenbill [options] [session-file.jsonl | project-dir]
        tokenbill card [options] [project-dir]   (shareable PNG of where the context went)
-       tokenbill statusline   (Claude Code statusLine command, reads JSON on stdin)
+       tokenbill statusline [--cost]   (Claude Code statusLine command, reads JSON on stdin)
 
 With no path argument, analyzes every session in the Claude Code project
 matching your current directory (falls back to your single most recent
@@ -155,6 +155,7 @@ function resolveTarget(arg: string | undefined, all: boolean): Target {
 // pipe, so colors stay on unless explicitly disabled.
 if (process.argv[2] === "statusline") {
   setColorEnabled(!process.env.NO_COLOR && !process.argv.includes("--no-color"));
+  if (process.argv.includes("--cost")) setUnit("usd");
   let raw = "";
   try {
     raw = process.stdin.isTTY ? "" : fs.readFileSync(0, "utf8");
