@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { CHARS_PER_TOKEN } from "../attribute.js";
 import type {
   Adapter,
   NormalizedRequest,
@@ -63,12 +64,33 @@ function checkIterations(rawUsage: any, warnings: string[], requestId: string): 
   }
 }
 
+/** Vision input is billed by area: about width x height / 750 tokens. */
+const IMAGE_PIXELS_PER_TOKEN = 750;
+/** Used when the log has no dimensions: roughly the largest image sent unscaled. */
+const DEFAULT_IMAGE_TOKENS = 1600;
+
+/**
+ * An image block's size in the same character units as text, so callers can
+ * keep dividing by CHARS_PER_TOKEN. Its base64 payload is not what the model
+ * reads and would overstate a screenshot about a hundredfold.
+ */
+function imageChars(rec: any): number {
+  const d = rec.toolUseResult?.file?.dimensions;
+  const w = num(d?.displayWidth) || num(d?.originalWidth);
+  const h = num(d?.displayHeight) || num(d?.originalHeight);
+  const tokens = w > 0 && h > 0 ? (w * h) / IMAGE_PIXELS_PER_TOKEN : DEFAULT_IMAGE_TOKENS;
+  return Math.round(tokens * CHARS_PER_TOKEN);
+}
+
 /** Size of a tool result in characters, preferring the content actually fed back to the model. */
 function toolResultChars(rec: any, block: any): number {
   if (typeof block?.content === "string") return block.content.length;
   if (Array.isArray(block?.content)) {
     let n = 0;
-    for (const b of block.content) if (typeof b?.text === "string") n += b.text.length;
+    for (const b of block.content) {
+      if (typeof b?.text === "string") n += b.text.length;
+      else if (b?.type === "image") n += imageChars(rec);
+    }
     if (n > 0) return n;
   }
   const tur = rec.toolUseResult;
