@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-28
+
 ### Changed
 - **Reports are in tokens by default.** A dollar figure is an API price a
   subscriber never pays, so terminal, Markdown, HTML, JSON, the card and the
@@ -23,6 +25,9 @@ All notable changes to this project are documented here. The format follows
   request.
 
 ### Added
+- `--until` ends the report at the end of a UTC day, with the same date forms
+  as `--since` (`2026-09-30`, `7d`, `2w`).
+  Thanks @snehaapratap ([#12](https://github.com/emrehangorgec/tokenbill/pull/12)).
 - The status line shows real plan usage (`5h 64% · week 38%`) from the
   `rate_limits` Claude Code sends Pro and Max subscribers, and leaves it out
   when absent. `tokenbill statusline --cost` keeps dollars.

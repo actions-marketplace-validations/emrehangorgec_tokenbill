@@ -1,6 +1,6 @@
 {
   "name": "tokenbill",
-  "version": "0.7.3",
+  "version": "1.0.0",
   "description": "Where did my Claude Code context go? Token breakdown and plan usage from local session logs.",
   "type": "module",
   "bin": {

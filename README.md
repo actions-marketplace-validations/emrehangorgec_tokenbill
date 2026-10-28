@@ -211,8 +211,6 @@ npx tokenbill --all --until 2026-09-30 --json
 `--until` accepts the same date forms as `--since`. For example, `--until 7d`
 ends on the UTC day six days before today, including that entire day. An end
 date before `--since` is an error; equal dates select one full day.
-With `card --plan`, the plan fee ends on `--until` too. If `--since` is omitted,
-the default 30-day comparison ends on that day.
 
 This includes each matching session in full, even if it spans multiple days.
 Sessions without a recorded start time are excluded when filtering. If no
