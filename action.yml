@@ -1,5 +1,5 @@
 name: tokenbill
-description: Itemized AI coding agent spend from Claude Code session logs, with an optional budget guard.
+description: Where Claude Code context went, from session logs, with an optional API cost budget guard.
 author: Emrehan Görgeç
 branding:
   icon: dollar-sign
@@ -10,7 +10,7 @@ inputs:
     description: Claude Code log directory or a single .jsonl session file. CI runners have no ~/.claude, so point this at logs you committed or downloaded as an artifact.
     required: true
   budget:
-    description: Fail the step (exit 2) when the total exceeds this many USD. Empty disables the guard.
+    description: Fail the step (exit 2) when the API-equivalent cost exceeds this many USD. Empty disables the guard.
     required: false
     default: ""
   version:

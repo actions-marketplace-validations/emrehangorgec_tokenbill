@@ -1,7 +1,7 @@
 {
   "name": "tokenbill",
   "version": "0.7.3",
-  "description": "Where did my AI budget go? Token cost explainer for Claude Code sessions.",
+  "description": "Where did my Claude Code context go? Token breakdown and plan usage from local session logs.",
   "type": "module",
   "bin": {
     "tokenbill": "dist/cli.js"
