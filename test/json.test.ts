@@ -21,7 +21,8 @@ function pipeline(fixture: string) {
 describe("--json output", () => {
   it("is valid JSON with the documented shape", () => {
     const data = JSON.parse(pipeline("fixtures/compaction.jsonl"));
-    expect(data.schemaVersion).toBe(2);
+    expect(data.schemaVersion).toBe(3);
+    expect(data.unit).toBe("usd");
     expect(data.totalUSD).toBeGreaterThan(0);
     expect(data.categories).toHaveProperty("compactionUSD");
     expect(data.compactionEvents).toHaveLength(1);

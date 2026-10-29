@@ -16,9 +16,21 @@ export interface Usage {
   service_tier?: string;
 }
 
+/**
+ * The few tool_use input fields the audit needs. Kept small on purpose: Write
+ * and Edit inputs carry whole file contents, which we never hold on to.
+ */
+export interface ToolInput {
+  filePath?: string;
+  offset?: number;
+  limit?: number;
+  command?: string;
+}
+
 export interface ToolCall {
   id: string;
   name: string;
+  input?: ToolInput;
 }
 
 /** One deduplicated API request (one requestId). */
@@ -35,7 +47,16 @@ export interface NormalizedRequest {
 
 export type TimelineEvent =
   | { kind: "request"; request: NormalizedRequest }
-  | { kind: "toolResult"; toolName: string; chars: number; timestamp: string }
+  | {
+      kind: "toolResult";
+      toolName: string;
+      chars: number;
+      timestamp: string;
+      /** id of the tool_use this answers; "" when the log omits it */
+      toolUseId: string;
+      /** the tool reported failure (non-zero exit, missing file, ...) */
+      isError: boolean;
+    }
   | {
       kind: "userPrompt";
       chars: number;

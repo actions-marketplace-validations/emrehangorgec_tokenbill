@@ -1,11 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { CHARS_PER_TOKEN } from "../attribute.js";
 import type {
   Adapter,
   NormalizedRequest,
   NormalizedSession,
   Stream,
   TimelineEvent,
+  ToolCall,
+  ToolInput,
   Usage,
 } from "./types.js";
 
@@ -61,12 +64,33 @@ function checkIterations(rawUsage: any, warnings: string[], requestId: string): 
   }
 }
 
+/** Vision input is billed by area: about width x height / 750 tokens. */
+const IMAGE_PIXELS_PER_TOKEN = 750;
+/** Used when the log has no dimensions: roughly the largest image sent unscaled. */
+const DEFAULT_IMAGE_TOKENS = 1600;
+
+/**
+ * An image block's size in the same character units as text, so callers can
+ * keep dividing by CHARS_PER_TOKEN. Its base64 payload is not what the model
+ * reads and would overstate a screenshot about a hundredfold.
+ */
+function imageChars(rec: any): number {
+  const d = rec.toolUseResult?.file?.dimensions;
+  const w = num(d?.displayWidth) || num(d?.originalWidth);
+  const h = num(d?.displayHeight) || num(d?.originalHeight);
+  const tokens = w > 0 && h > 0 ? (w * h) / IMAGE_PIXELS_PER_TOKEN : DEFAULT_IMAGE_TOKENS;
+  return Math.round(tokens * CHARS_PER_TOKEN);
+}
+
 /** Size of a tool result in characters, preferring the content actually fed back to the model. */
 function toolResultChars(rec: any, block: any): number {
   if (typeof block?.content === "string") return block.content.length;
   if (Array.isArray(block?.content)) {
     let n = 0;
-    for (const b of block.content) if (typeof b?.text === "string") n += b.text.length;
+    for (const b of block.content) {
+      if (typeof b?.text === "string") n += b.text.length;
+      else if (b?.type === "image") n += imageChars(rec);
+    }
     if (n > 0) return n;
   }
   const tur = rec.toolUseResult;
@@ -79,6 +103,30 @@ function toolResultChars(rec: any, block: any): number {
     }
   }
   return 0;
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function int(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** Keep only the input fields the audit reads; drop file contents and the rest. */
+export function toolInput(raw: unknown): ToolInput | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const input: ToolInput = {
+    filePath: str(r.file_path) ?? str(r.notebook_path),
+    offset: int(r.offset),
+    limit: int(r.limit),
+    command: str(r.command),
+  };
+  for (const k of Object.keys(input) as (keyof ToolInput)[]) {
+    if (input[k] === undefined) delete input[k];
+  }
+  return Object.keys(input).length > 0 ? input : undefined;
 }
 
 const PREVIEW_CHARS = 160;
@@ -156,13 +204,16 @@ function parseFile(file: string, subagent?: string): ParseResult {
 
       // Register tool_use blocks regardless of dedupe - content blocks of one
       // request are spread across multiple records sharing the requestId.
-      const newToolCalls: { id: string; name: string }[] = [];
+      const newToolCalls: ToolCall[] = [];
       const content = rec.message?.content;
       if (Array.isArray(content)) {
         for (const block of content) {
           if (block?.type === "tool_use" && typeof block.name === "string") {
             toolNameById.set(block.id, block.name);
-            newToolCalls.push({ id: block.id, name: block.name });
+            const input = toolInput(block.input);
+            const call: ToolCall = { id: block.id, name: block.name };
+            if (input) call.input = input;
+            newToolCalls.push(call);
           }
         }
       }
@@ -216,6 +267,8 @@ function parseFile(file: string, subagent?: string): ParseResult {
               toolName: toolNameById.get(block.tool_use_id) ?? "unknown",
               chars: toolResultChars(rec, block),
               timestamp: rec.timestamp ?? "",
+              toolUseId: str(block.tool_use_id) ?? "",
+              isError: block.is_error === true,
             });
           }
         }

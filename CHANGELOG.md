@@ -6,6 +6,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-28
+
+### Changed
+- **Reports are in tokens by default.** A dollar figure is an API price a
+  subscriber never pays, so terminal, Markdown, HTML, JSON, the card and the
+  status line now show the tokens each part of the context took. `--cost`
+  brings back the API-equivalent dollar report unchanged, and `--budget`
+  implies it.
+- In tokens, cache writes are part of the context they wrote rather than a
+  category of their own, and no savings estimate is shown: a saving is a
+  price question.
+- `--json` is `schemaVersion: 3` with a `unit` field. In token mode the
+  amount fields are named `...Tokens` (`totalTokens`, `costTokens`) and the
+  dollar-only fields (`savedUSD`, `wastedUSD`, savings) are left out.
+- The share card leads with the token total and, in place of the savings
+  panel, the average request size: the whole context, re-sent once per
+  request.
+
+### Added
+- `--until` ends the report at the end of a UTC day, with the same date forms
+  as `--since` (`2026-09-30`, `7d`, `2w`).
+  Thanks @snehaapratap ([#12](https://github.com/emrehangorgec/tokenbill/pull/12)).
+- The status line shows real plan usage (`5h 64% · week 38%`) from the
+  `rate_limits` Claude Code sends Pro and Max subscribers, and leaves it out
+  when absent. `tokenbill statusline --cost` keeps dollars.
+
+### Removed
+- `tokenbill card --plan`: comparing an API-equivalent figure with a
+  subscription fee said more than the numbers support.
+
+### Fixed
+- Image tool results (screenshots read back by the agent) were sized by
+  their base64 payload, about a hundred times their real token cost. They
+  are now sized from their pixel dimensions.
+
 ## [0.7.3] - 2026-10-25
 
 ### Added

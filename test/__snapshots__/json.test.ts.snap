@@ -2,7 +2,7 @@
 
 exports[`--json output > golden snapshot (subagent session) 1`] = `
 "{
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "pricingAsOf": "<PRICING_AS_OF>",
   "session": {
     "id": "434bccac-30fc-4b1c-bf3f-477c103af21a",
@@ -113,6 +113,7 @@ exports[`--json output > golden snapshot (subagent session) 1`] = `
       "hasCompaction": false,
       "subagents": []
     }
-  ]
+  ],
+  "unit": "usd"
 }"
 `;

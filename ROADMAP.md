@@ -1,110 +1,68 @@
 # Roadmap
 
+tokenbill is feature complete at 1.0. It is maintained for fixes (log format
+changes, pricing updates for `--cost`) but no new features are planned. This
+page records what was built, what was measured, and what was left out on
+purpose.
+
 ## Who it is for
 
-Developers who use AI coding agents every day, on a subscription or on API
-keys, and the team leads who pay for them.
-
-## The problem
-
-Agents report a token count or a dollar total, but not why a session cost what
-it did or what to change. tokenbill explains where the money went and what to
-do about it, in words a non-expert understands and in a form people want to
-share.
+Developers who use Claude Code every day, mostly on a Pro or Max
+subscription, who want to know what their context is made of. Teams on API
+keys get the same report in dollars with `--cost`, and a CI budget guard.
 
 ## Principles
 
-- **Explain, don't just count.** Every number comes with what it paid for.
+- **Explain, don't just count.** Every number says what it was made of.
 - **Zero setup.** `npx tokenbill` works in any project with no config.
-- **Local analysis, opt-in sharing.** Analysis runs on the user's machine with
-  no network calls. Anything that leaves the machine (an image, an HTML file, a
-  GitHub comment) is created only when the user asks for it, and prompt text is
-  hidden by default in automatic shares.
-- **Honest numbers.** API-equivalent estimates are labeled as estimates;
-  heuristics are called heuristics.
-- **Solve our users' problem.** A feature is added because it helps people
-  understand or reduce their spend, not because another tool has it.
+- **Local analysis, opt-in sharing.** No network calls. Anything that leaves
+  the machine (an image, an HTML file, a job summary) is created only when the
+  user asks, and `--redact` hides prompt text.
+- **Honest numbers.** Tokens by default, because a dollar figure is a price a
+  subscriber never pays. Plan usage only as Claude Code reports it, never
+  derived from tokens. Heuristics are called heuristics.
 
-## Phase 1: Readable reports (done)
+## What shipped
 
-- Expensive turns are labeled with the prompt that started them.
-- `--redact` hides prompt text everywhere; the Action uses it.
-- Plain-language category names, shared by every report.
-- Reports are titled with the project name, not the log path.
+- **0.1 to 0.6: the report.** Per-request deduplication, attribution of the
+  context to the conversation, tool output, files, replies and compaction,
+  cache analysis, largest turns with their prompts, sub-agents, Markdown,
+  HTML and JSON output, `--all`, `--since`, a GitHub Action and budget guard.
+- **0.7: the share card.** One 1200×630 image rendered locally with bundled
+  fonts, byte identical on Windows, macOS and Linux.
+- **1.0: tokens first.** Every report in tokens, dollars behind `--cost`, real
+  plan usage in the status line, and a fix for screenshots that were counted
+  about a hundred times too large.
 
-## Phase 2: Share card (done)
+## What was measured before 1.0
 
-- `tokenbill card`: one image with the total, the spend spectrum, the priciest
-  prompt and the estimated room to save.
-- PNG rendered locally without a browser, with bundled fonts.
-- `--plan` compares spend against a Claude subscription's price.
-- A ready-to-paste caption for posting.
+The plan for 1.0 was a per-turn waste detector: a Claude Code hook that
+would flag large tool outputs, repeated file reads and failed commands run
+again unchanged. It was measured first, on 22 real sessions (3,098 requests,
+840 M tokens of context):
 
-## Phase 3: Release 0.7.0 (done)
+| Signal | Result |
+|---|---|
+| Large tool output kept in context | 1.1% of context sent |
+| Same file range read again, unchanged | 1 of 141 reads |
+| Failed command run again, unchanged | 0 of 57 failures |
+| Conversation re-sent with each request | 82.7% of context sent |
 
-- CI installs the packed tarball into an empty project on Windows, macOS and
-  Linux and renders a card from it; the three cards are byte identical, so
-  the bundled fonts are used everywhere.
-- 0.7.0 is on npm and the README points the Action at it.
-- Repository topics are set. Still open: a social preview image, so links
-  to the repo look like the card.
+Claude Code already trims large output and avoids redundant reads. What fills
+the context is session length, which Claude Code's own context indicator,
+`/compact` and `/clear` already address. The detector was dropped; the
+measurement became the README's headline instead.
 
-## Phase 4: A card worth posting (done, 0.7.1)
+## Left out on purpose
 
-People share their own number, not a tool. The card has to say something a
-stranger understands at a glance, even with `--redact`.
-
-- With `--redact`, the left panel shows the costliest finding and the change
-  that helps ("13 compactions cost $31.56 → start a fresh session per task")
-  instead of a list of tool calls.
-- Against a whole month's fee, the plan comparison says how many days of use
-  it covers ("1.6× my Max 5x plan's price ($100) in 2 days").
-- The day strip is labeled with the day it ends on.
-- Long labels are cut at a word boundary.
-- `tokenbill card` suggests `--plan` when it was not given; the caption
-  includes the costliest finding and ends with the command that made the card.
-
-## Phase 5: Small launch
-
-- Lead with a finding, not the tool: "half of my bill was re-sending the
-  conversation, here is what changed it", with the card attached.
-- r/ClaudeAI and r/ClaudeCode first, Show HN on a different day, then curated
-  lists of Claude Code tools.
-- Every question that comes back becomes an issue; those issues order Phase 6.
-- Discussions are open, with a pinned "Show your bill" thread for cards,
-  and a few issues are labeled `good first issue`.
-- Baseline before launch: 11 stars, about 20 npm downloads a week.
-
-## Phase 6: Chosen by feedback
-
-Candidates, in the order we currently expect. Each needs its own design note
-before work starts.
-
-- **Codex adapter.** Roughly doubles who can use tokenbill, and a Claude Code
-  vs Codex comparison is itself something people share. Needs log discovery,
-  adapter selection in the CLI and OpenAI model prices (see
-  [CONTRIBUTING](CONTRIBUTING.md#adding-an-adapter)).
-- **Claude Code plugin.** The status line and a `/tokenbill` command in one
-  install, inside the tool people already have open.
-- **Cost comment on pull requests.** Open questions to settle first:
-  - How sessions are linked to a PR (branch, commit trailers, time window), so
-    a project total is never shown as a PR cost.
-  - What happens when one session touches several PRs, or one PR spans several
-    sessions.
-  - How re-runs update a single comment instead of adding new ones.
-  - Posting to GitHub is a network call: it stays opt-in, runs only in CI, and
-    always uses `--redact`.
-
-## Later, if at all
-
-- **Cost per commit or per line.** Squash merges, rewritten code and deleted
-  lines distort it heavily. If added, it is shown as a plainly defined ratio,
-  never as a productivity score.
-
-## Out of scope
-
-- Time tracking or "hours worked" estimates.
-- Receipt-style output and Wrapped-style personas.
-- Security scanning of agents, MCP servers or repositories.
-- A hosted dashboard, accounts or any upload of user data.
-- Report translations, until there is demand from users.
+- **Per-turn hooks and a Claude Code plugin.** See above: the signals were
+  not there, and a notice after every turn would mostly say nothing.
+- **A Codex adapter.** ccusage and others already report Codex usage. The
+  adapter interface in `src/adapters/` stays open for contributions.
+- **Cost comments on pull requests.** Linking sessions to PRs (branches,
+  squash merges, sessions spanning PRs) cannot be done reliably from logs.
+- **Comparing usage with a plan's price.** Removed in 1.0: an API-equivalent
+  figure divided by a subscription fee says more than the numbers support.
+- **Cost per commit or per line, time tracking, personas.** These read as
+  productivity scores, which token logs cannot support.
+- **A hosted dashboard, accounts or any upload of user data.**

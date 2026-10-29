@@ -9,16 +9,12 @@ import { categoryRows } from "../categories.js";
 import { subagentLabel, turnLabel } from "../privacy.js";
 import { pricingLabel } from "../cost/pricing.js";
 import { dailyTrend } from "../trends.js";
+import { amount, costShown, tokens as tok } from "../unit.js";
 import { bold, dim, paint, palette } from "./theme.js";
 
+/** Short amount for aligned columns: "$1.23" or "1.2 M". */
 function usd(n: number): string {
-  return `$${n.toFixed(n >= 100 ? 0 : 2)}`;
-}
-
-function tok(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} M`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)} K`;
-  return String(n);
+  return amount(n, true);
 }
 
 function duration(session: NormalizedSession): string {
@@ -69,8 +65,8 @@ function categoryLines(attr: Attribution, totalUSD: number): string[] {
 function turnLines(turns: Turn[], sessionIdOf?: (t: Turn) => string): string[] {
   if (turns.length === 0) return [];
   const title = sessionIdOf
-    ? `Top ${turns.length} most expensive turns (all sessions)`
-    : `Top ${turns.length} most expensive turns`;
+    ? `Top ${turns.length} ${costShown() ? "most expensive" : "largest"} turns (all sessions)`
+    : `Top ${turns.length} ${costShown() ? "most expensive" : "largest"} turns`;
   const lines = [``, `  ${bold(title)}`, dim(`  ${RULE}`)];
   for (const t of turns) {
     const sid = sessionIdOf ? dim(`${sessionIdOf(t)}  `) : "";
@@ -104,13 +100,15 @@ function cacheLines(cache: CacheAnalysis): string[] {
   const lines = [``, `  ${bold("Cache efficiency")}`, dim(`  ${RULE}`)];
   const rate = cache.hitRate;
   const rateColor = rate >= 0.8 ? palette.good : rate >= 0.5 ? palette.warn : palette.bad;
-  lines.push(
-    `  Cache hit rate: ${paint(rateColor, `${(rate * 100).toFixed(0)}%`)}  ·  saved ≈ ${paint(
-      palette.good,
-      usd(cache.savedUSD),
-    )} vs. uncached`,
-  );
-  if (cache.invalidations > 0) {
+  const saved = costShown()
+    ? `  ·  saved ≈ ${paint(palette.good, usd(cache.savedUSD))} vs. uncached`
+    : "";
+  lines.push(`  Cache hit rate: ${paint(rateColor, `${(rate * 100).toFixed(0)}%`)}${saved}`);
+  if (cache.invalidations > 0 && !costShown()) {
+    lines.push(
+      `  Mid-session cache rebuilds after prefix breaks: ${paint(palette.bad, String(cache.invalidations))}`,
+    );
+  } else if (cache.invalidations > 0) {
     lines.push(
       `  Wasted on cache re-writes after prefix breaks: ${paint(palette.bad, usd(cache.wastedUSD))} ` +
         dim(`(${cache.invalidations} rebuild${cache.invalidations > 1 ? "s" : ""})`),
@@ -133,7 +131,7 @@ function adviceLines(advice: Advice): string[] {
     }
     if (f.detail) lines.push(dim(`    → ${f.detail}`));
   }
-  if (advice.potentialSavingsUSD >= 0.05) {
+  if (costShown() && advice.potentialSavingsUSD >= 0.05) {
     lines.push(dim(`  Potential savings this project: ≈ ${usd(advice.potentialSavingsUSD)}`));
   }
   lines.push(dim(`  ${RULE}`));
@@ -151,7 +149,8 @@ function trendLines(buckets: ReturnType<typeof dailyTrend>): string[] {
   const spark = buckets
     .map((b) => SPARKS[Math.min(SPARKS.length - 1, Math.ceil((b.costUSD / max) * (SPARKS.length - 1)))])
     .join("");
-  const lines = [``, `  ${bold(`Daily spend (last ${buckets.length} days)`)}`, dim(`  ${RULE}`)];
+  const what = costShown() ? "spend" : "tokens";
+  const lines = [``, `  ${bold(`Daily ${what} (last ${buckets.length} days)`)}`, dim(`  ${RULE}`)];
   lines.push(`  ${paint(palette.brand, spark)}   total ${usd(total)}`);
   for (const b of buckets) {
     if (b.sessions === 0) continue;
@@ -177,17 +176,22 @@ function serverToolLines(st: { webSearch: number; webFetch: number; costUSD: num
   const parts: string[] = [];
   if (st.webSearch > 0) parts.push(`${st.webSearch} web search${st.webSearch === 1 ? "" : "es"}`);
   if (st.webFetch > 0) parts.push(`${st.webFetch} web fetch${st.webFetch === 1 ? "" : "es"}`);
+  if (!costShown()) return [`  Server tools: ${parts.join(", ")}`];
   const note = st.costUSD > 0 ? usd(st.costUSD) : dim("no per-request charge");
   return [`  Server tools: ${parts.join(", ")} - ${note}`];
 }
 
 function totalLines(totalUSD: number): string[] {
-  return [
-    `  ${bold("TOTAL ESTIMATED COST".padEnd(50))}${bold(paint(palette.brand, usd(totalUSD)))}`,
-  ];
+  const label = costShown() ? "TOTAL ESTIMATED COST" : "TOKENS SENT AND WRITTEN";
+  return [`  ${bold(label.padEnd(50))}${bold(paint(palette.brand, amount(totalUSD)))}`];
 }
 
 function footer(): string {
+  if (!costShown()) {
+    return dim(
+      "  Token counts from the session logs · file and tool shares are estimates · --cost for API prices",
+    );
+  }
   return dim(
     `  API-equivalent cost estimate · prices as of ${pricingLabel()} · subscription users pay flat fees`,
   );
@@ -213,7 +217,7 @@ export function renderReport(
     lines.push(...categoryLines(attr, cost.totalUSD));
     for (const e of attr.compactionEvents) {
       lines.push(
-        `  Context compacted at ${hhmm(e.timestamp)} - cost ${usd(e.costUSD)}, ` +
+        `  Context compacted at ${hhmm(e.timestamp)} - ${costShown() ? "cost" : "re-sent"} ${amount(e.costUSD)}, ` +
           `dropped ~${tok(e.droppedTokens)} tokens of history` +
           (e.subagent ? dim(` (sub-agent ${e.subagent})`) : ""),
       );
@@ -237,10 +241,11 @@ export function renderReport(
   lines.push(`  ${bold(`Per model`)} ${dim(`(${cost.requestCount} API requests)`)}`);
   lines.push(dim(`  ${RULE}`));
   for (const m of cost.perModel) {
-    const flag = m.pricedExactly ? "" : paint(palette.warn, " ~unknown model, sonnet rates");
+    const flag =
+      m.pricedExactly || !costShown() ? "" : paint(palette.warn, " ~unknown model, sonnet rates");
     lines.push(
       `  ${m.model.padEnd(30)} ${tok(m.input + m.cacheRead + m.cacheWrite).padStart(7)} in ` +
-        `${tok(m.output).padStart(7)} out  ${usd(m.costUSD).padStart(8)}${flag}`,
+        `${tok(m.output).padStart(7)} out${costShown() ? `  ${usd(m.costUSD).padStart(8)}` : ""}${flag}`,
     );
   }
   lines.push(dim(`  ${RULE}`));
@@ -321,7 +326,7 @@ export function renderAggregateReport(
   for (const m of result.perModel) {
     lines.push(
       `  ${m.model.padEnd(30)} ${tok(m.input + m.cacheRead + m.cacheWrite).padStart(7)} in ` +
-        `${tok(m.output).padStart(7)} out  ${usd(m.costUSD).padStart(8)}`,
+        `${tok(m.output).padStart(7)} out${costShown() ? `  ${usd(m.costUSD).padStart(8)}` : ""}`,
     );
   }
   lines.push(dim(`  ${RULE}`));

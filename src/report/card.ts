@@ -1,8 +1,10 @@
 /**
  * Share card: one 1200x630 SVG (the Open Graph size X, Reddit and LinkedIn
  * preview at) that tells the story of a project's spend at a glance:
- * the total, a single spectrum band of where it went, the priciest prompt
- * and the estimated room to save that the recommendations point to.
+ * the total, a single spectrum band of where it went, the largest prompt
+ * and, with --cost, the estimated room to save the recommendations point to.
+ * In tokens that last panel shows the average request size instead: a saving
+ * has no honest token equivalent.
  *
  * Pure string rendering - rasterizing to PNG lives in card-png.ts.
  */
@@ -11,29 +13,16 @@ import type { AggregateResult } from "../aggregate.js";
 import { categoryRows, type CategoryKey } from "../categories.js";
 import { turnPrompt } from "../privacy.js";
 import { dailyTrend } from "../trends.js";
+import { amount, costShown } from "../unit.js";
 
 export const CARD_W = 1200;
 export const CARD_H = 630;
-
-/** Monthly list prices of Claude subscription plans, USD. */
-export const PLANS: Record<string, { name: string; monthlyUSD: number }> = {
-  pro: { name: "Pro", monthlyUSD: 20 },
-  max5: { name: "Max 5x", monthlyUSD: 100 },
-  max20: { name: "Max 20x", monthlyUSD: 200 },
-};
-
-export interface PlanInfo {
-  name: string;
-  /** what the plan cost over the card's window */
-  feeUSD: number;
-  /** length of that window in days */
-  windowDays: number;
-}
 
 export interface CardData {
   project: string;
   periodLabel: string;
   sessionCount: number;
+  requestCount: number;
   totalUSD: number;
   segments: { key: CategoryKey; label: string; amountUSD: number }[];
   topMoment?: { costUSD: number; label: string; quoted: boolean };
@@ -43,9 +32,6 @@ export interface CardData {
   savings: { estimateUSD: number; breaks: number; compactions: number };
   cacheHitRate: number;
   days: { date: string; costUSD: number }[];
-  /** calendar days from the first session to the last one */
-  activeDays: number;
-  plan?: PlanInfo;
 }
 
 const FONT_SANS = "Space Grotesk, Segoe UI, Helvetica, Arial, sans-serif";
@@ -80,10 +66,9 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function money(n: number): string {
-  if (n >= 10000) return `$${Math.round(n).toLocaleString("en-US")}`;
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  return `$${n.toFixed(2)}`;
+/** "$1,234" or "1.2 M" (`long` adds "tokens"). */
+function money(n: number, long = false): string {
+  return amount(n, !long);
 }
 
 /**
@@ -103,14 +88,6 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-function calendarDays(oldest: string | undefined, newest: string | undefined): number {
-  const a = oldest ? new Date(oldest) : undefined;
-  const b = newest ? new Date(newest) : undefined;
-  if (!a || !b || isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
-  const day = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((day(b) - day(a)) / 864e5) + 1;
-}
-
 /** Card wording for an advisor finding: what it cost, and the one change that helps. */
 function describeFinding(
   f: Finding,
@@ -122,19 +99,19 @@ function describeFinding(
   switch (f.kind) {
     case "compaction":
       return {
-        title: `${plural(compactions, "compaction")} cost ${money(cost)}`,
+        title: `${plural(compactions, "compaction")} cost ${money(cost, true)}`,
         fix: "start a fresh session per task",
         costUSD: cost,
       };
     case "cacheBreaks":
       return {
-        title: `${plural(breaks, "cache break")} cost ${money(cost)}`,
+        title: `${plural(breaks, "cache break")} cost ${money(cost, true)}`,
         fix: "keep settings and prompts stable mid-session",
         costUSD: cost,
       };
     case "fileReads":
       return {
-        title: `file reads cost ${money(cost)} (${Math.round((cost / totalUSD) * 100)}%)`,
+        title: `file reads cost ${money(cost, true)} (${Math.round((cost / totalUSD) * 100)}%)`,
         fix: "read ranges or grep instead of whole files",
         costUSD: cost,
       };
@@ -150,7 +127,7 @@ function shortDate(ts: string | undefined): string | undefined {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function cardData(result: AggregateResult, project: string, plan?: PlanInfo): CardData {
+export function cardData(result: AggregateResult, project: string): CardData {
   const oldest = result.sessions[result.sessions.length - 1]?.startTime;
   const newest = result.sessions[0]?.startTime;
   const a = shortDate(oldest);
@@ -172,6 +149,7 @@ export function cardData(result: AggregateResult, project: string, plan?: PlanIn
     project,
     periodLabel,
     sessionCount: result.sessionCount,
+    requestCount: result.requestCount,
     totalUSD: result.totalUSD,
     segments: categoryRows(result.categories)
       .filter((r) => r.amountUSD > 0)
@@ -191,8 +169,6 @@ export function cardData(result: AggregateResult, project: string, plan?: PlanIn
     },
     cacheHitRate: result.cache.hitRate,
     days: dailyTrend(result.sessions, 30).map((d) => ({ date: d.date, costUSD: d.costUSD })),
-    activeDays: calendarDays(oldest, newest),
-    plan,
   };
 }
 
@@ -234,34 +210,17 @@ function header(d: CardData): string {
 
 function hero(d: CardData): string {
   const total = money(d.totalUSD);
-  let out =
-    `<text x="64" y="150" font-family="${FONT_SANS}" font-weight="500" font-size="20" fill="${K.dim}" letter-spacing="2">MY CLAUDE CODE BILL</text>` +
-    `<text x="60" y="262" font-family="${FONT_SANS}" font-weight="700" font-size="112" fill="${K.fg}" letter-spacing="-3">${esc(total)}</text>`;
-  // Right of the total: the plan multiplier when known, else cache savings.
+  const title = costShown() ? "MY CLAUDE CODE BILL" : "TOKENS MY CLAUDE CODE SENT";
+  // The number's width sets where the cache figure goes beside it.
   const x = 64 + total.length * 112 * 0.54 + 48;
-  if (d.plan && d.plan.feeUSD > 0) {
-    // Below 1x a multiplier reads like a typo; say how much of the plan it used.
-    const mult = d.totalUSD / d.plan.feeUSD;
-    const big = mult >= 1 ? `${mult.toFixed(1)}×` : `${Math.round(mult * 100)}%`;
-    const sub = mult >= 1 ? `my ${d.plan.name} plan's price` : `of my ${d.plan.name} plan's price`;
-    // Two days of use against a month's fee is a different claim than thirty.
-    // Only said against a whole month's fee: next to a prorated fee it would
-    // read as the fee for those days.
-    const span =
-      d.plan.windowDays === 30 && d.activeDays > 0 && d.activeDays < 30
-        ? ` in ${plural(d.activeDays, "day")}`
-        : "";
-    out +=
-      `<text x="${x}" y="214" font-family="${FONT_SANS}" font-weight="700" font-size="56" fill="${K.accent}">${big}</text>` +
-      `<text x="${x}" y="250" font-family="${FONT_SANS}" font-weight="500" font-size="20" fill="${K.dim}">` +
-      `${esc(`${sub} (${money(d.plan.feeUSD)})${span}`)}</text>`;
-  } else {
-    out +=
-      `<text x="${x}" y="214" font-family="${FONT_SANS}" font-weight="700" font-size="44" fill="${K.brand}">${Math.round(d.cacheHitRate * 100)}%</text>` +
-      `<text x="${x}" y="250" font-family="${FONT_SANS}" font-weight="500" font-size="20" fill="${K.dim}">served from cache</text>`;
-  }
-  out += `<text x="64" y="298" font-family="${FONT_MONO}" font-size="15" fill="${K.dim}">at API list prices · where it went:</text>`;
-  return out;
+  return (
+    `<text x="64" y="150" font-family="${FONT_SANS}" font-weight="500" font-size="20" fill="${K.dim}" letter-spacing="2">${title}</text>` +
+    `<text x="60" y="262" font-family="${FONT_SANS}" font-weight="700" font-size="112" fill="${K.fg}" letter-spacing="-3">${esc(total)}</text>` +
+    `<text x="${x}" y="214" font-family="${FONT_SANS}" font-weight="700" font-size="44" fill="${K.brand}">${Math.round(d.cacheHitRate * 100)}%</text>` +
+    `<text x="${x}" y="250" font-family="${FONT_SANS}" font-weight="500" font-size="20" fill="${K.dim}">served from cache</text>` +
+    `<text x="64" y="298" font-family="${FONT_MONO}" font-size="15" fill="${K.dim}">` +
+    `${costShown() ? "at API list prices · where it went:" : "where the context went:"}</text>`
+  );
 }
 
 /** The signature element: one band, every dollar in it, sized by share. */
@@ -330,19 +289,36 @@ function moments(d: CardData): string {
     left = panel(
       64,
       628,
-      m.quoted ? "PRICIEST PROMPT" : "PRICIEST TURN",
+      `${costShown() ? "PRICIEST" : "LARGEST"} ${m.quoted ? "PROMPT" : "TURN"}`,
       K.brand,
       `<text x="88" y="514" font-family="${FONT_SANS}" font-weight="500" font-size="24" fill="${K.fg}">${esc(text)}</text>` +
-        `<text x="88" y="548" font-family="${FONT_MONO}" font-size="18" fill="${K.dim}">${esc(`${money(m.costUSD)} in one turn`)}</text>`,
+        `<text x="88" y="548" font-family="${FONT_MONO}" font-size="18" fill="${K.dim}">${esc(`${money(m.costUSD, true)} in one turn`)}</text>`,
     );
   }
+  return left + (costShown() ? savingsPanel(d) : requestPanel(d));
+}
+
+/** Token mode: what one request re-sends on average, the number behind long sessions. */
+function requestPanel(d: CardData): string {
+  const avg = d.requestCount > 0 ? d.totalUSD / d.requestCount : 0;
+  return panel(
+    716,
+    420,
+    "AVERAGE REQUEST",
+    K.accent,
+    `<text x="740" y="522" font-family="${FONT_SANS}" font-weight="700" font-size="40" fill="${K.accent}">${esc(`≈ ${money(avg, true)}`)}</text>` +
+      `<text x="740" y="552" font-family="${FONT_MONO}" font-size="16" fill="${K.dim}">${esc(`the whole context, re-sent ${d.requestCount} times`)}</text>`,
+  );
+}
+
+function savingsPanel(d: CardData): string {
   const est = d.savings.estimateUSD;
   const parts: string[] = [];
   if (d.savings.breaks > 0) parts.push(`${d.savings.breaks} cache break${d.savings.breaks === 1 ? "" : "s"}`);
   if (d.savings.compactions > 0) {
     parts.push(`${d.savings.compactions} compaction${d.savings.compactions === 1 ? "" : "s"}`);
   }
-  const right = panel(
+  return panel(
     716,
     420,
     "ROOM TO SAVE (ESTIMATE)",
@@ -350,7 +326,6 @@ function moments(d: CardData): string {
     `<text x="740" y="522" font-family="${FONT_SANS}" font-weight="700" font-size="40" fill="${est > 0 ? K.accent : K.fg}">${esc(est > 0 ? `≈ ${money(est)}` : money(0))}</text>` +
       `<text x="740" y="552" font-family="${FONT_MONO}" font-size="16" fill="${K.dim}">${esc(est > 0 ? fit(parts.join(" · ") || "see the report", 370, 16, 0.6) : "nothing obvious to trim")}</text>`,
   );
-  return left + right;
 }
 
 /** The strip ends on the last session's day, which is not always today. */
@@ -396,18 +371,10 @@ export function cardCaption(d: CardData): string {
   const lead = d.segments[0];
   const share = lead && d.totalUSD > 0 ? Math.round((lead.amountUSD / d.totalUSD) * 100) : 0;
   const parts = [
-    `${money(d.totalUSD)} of Claude Code on ${d.project}` +
+    `${money(d.totalUSD, true)} of Claude Code ${costShown() ? "" : "context "}on ${d.project}` +
       (d.sessionCount > 1 ? ` across ${d.sessionCount} sessions` : "") +
       ".",
   ];
-  if (d.plan && d.plan.feeUSD > 0) {
-    const mult = d.totalUSD / d.plan.feeUSD;
-    parts.push(
-      mult >= 1
-        ? `That's ${mult.toFixed(1)}× what my ${d.plan.name} plan costs.`
-        : `That's ${Math.round(mult * 100)}% of my ${d.plan.name} plan's price.`,
-    );
-  }
   if (lead) parts.push(`${share}% of it was ${lead.label.toLowerCase()}.`);
   if (d.topFinding) parts.push(`${d.topFinding.title[0].toUpperCase()}${d.topFinding.title.slice(1)}.`);
   parts.push("Itemize yours: npx tokenbill card");
